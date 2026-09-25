@@ -1,0 +1,45 @@
+[      0s] train loaded 150238 675743
+[      1s] cache hit train_cands.parquet
+[      3s] train cands 4,707,122  per S1 31.3  blocking recall 0.9761
+[     21s] string features on 4,707,122 sampled pairs
+[    200s] fit lgb: train 3,762,860 rows, holdout 944,262 rows, pos rate 0.108
+[100]	valid_0's binary_logloss: 0.0141277
+[200]	valid_0's binary_logloss: 0.0127637
+[300]	valid_0's binary_logloss: 0.0124514
+[400]	valid_0's binary_logloss: 0.0122996
+[500]	valid_0's binary_logloss: 0.0122051
+[600]	valid_0's binary_logloss: 0.0121673
+[    386s]   thr 0.30  F0.5 0.9557  {'precision': 0.9622102196045491, 'recall': 0.9622177103756328, 'singleton_acc': 0.8397790055248618}
+[    386s]   thr 0.34  F0.5 0.9579  {'precision': 0.9657746255187613, 'recall': 0.9600232021919615, 'singleton_acc': 0.8520564763658687}
+[    387s]   thr 0.38  F0.5 0.9598  {'precision': 0.968982815820039, 'recall': 0.9578885643476721, 'singleton_acc': 0.8624923265807244}
+[    387s]   thr 0.42  F0.5 0.9617  {'precision': 0.9722988069014096, 'recall': 0.955643315285947, 'singleton_acc': 0.8772252915899325}
+[    387s]   thr 0.46  F0.5 0.9629  {'precision': 0.9749687907168912, 'recall': 0.9530212950252229, 'singleton_acc': 0.8882750153468385}
+[    387s]   thr 0.50  F0.5 0.9641  {'precision': 0.9773168890735559, 'recall': 0.9507483514085534, 'singleton_acc': 0.8974831184775937}
+[    387s]   thr 0.54  F0.5 0.9647  {'precision': 0.9792289824049353, 'recall': 0.9482388350584675, 'singleton_acc': 0.9030079803560467}
+[    388s]   thr 0.58  F0.5 0.9654  {'precision': 0.9816437142020988, 'recall': 0.9457086660854985, 'singleton_acc': 0.9158993247391037}
+[    388s]   thr 0.62  F0.5 0.9661  {'precision': 0.9836763632467472, 'recall': 0.9431032208071558, 'singleton_acc': 0.9275629220380601}
+[    388s]   thr 0.66  F0.5 0.9661  {'precision': 0.9852082705003183, 'recall': 0.9400981110921841, 'singleton_acc': 0.9337016574585635}
+[    388s]   thr 0.70  F0.5 0.9663  {'precision': 0.9870400610810292, 'recall': 0.9369132929410336, 'singleton_acc': 0.9429097605893186}
+[    388s]   thr 0.74  F0.5 0.9658  {'precision': 0.9884860456849525, 'recall': 0.9331085760155691, 'singleton_acc': 0.9484346224677717}
+[    389s]   thr 0.78  F0.5 0.9651  {'precision': 0.9898579443547664, 'recall': 0.9288304492028978, 'singleton_acc': 0.9558011049723757}
+[    389s]   thr 0.82  F0.5 0.9644  {'precision': 0.9915730121133665, 'recall': 0.9235720186463681, 'singleton_acc': 0.9643953345610804}
+[    389s]   thr 0.86  F0.5 0.9629  {'precision': 0.9931094956485375, 'recall': 0.9172046647093993, 'singleton_acc': 0.9717618170656844}
+[    389s]   thr 0.90  F0.5 0.9600  {'precision': 0.9948759913592016, 'recall': 0.9075926222818976, 'singleton_acc': 0.9803560466543892}
+[    389s] HOLDOUT F0.5 0.9663 at threshold 0.70
+[    389s] top features {'bst_margin_pool': 6235290.0, 'bst_gap_pool': 2968506.0, 'bst_rank_pool': 1581931.0, 'num_jacc': 675638.0, 'n_miss_idf_r': 290726.0, 'num_conflict': 277820.0, 'legal_eq': 112071.0, 'legal_ov': 72277.0, 'num_first_eq': 57078.0, 'bst_rank_s1': 52455.0, 'n_ratio_join': 51223.0, 'n_ntok2': 48435.0, 'a_tset': 46437.0, 'n_partial': 46363.0, 'n_jw_join': 43765.0}
+[    389s] using threshold 0.70
+[    390s] test loaded 150238 675743 {'US': 82623, 'India': 67615}
+[    390s] cache hit test_cands.parquet
+[    390s] test cands 4,707,122  per S1 31.3
+[    639s]   predicted 4,000,000/4,707,122
+[    683s]   predicted 4,707,122/4,707,122
+[    686s] DONE: 150,238 S1 rows, 0.941 with >=1 match, 497,003 matched pairs
+[    686s] by country (share with match): {'India': 0.939, 'US': 0.942}
+ML Challenge 2026 — submission validator
+  test dir: devdata/test
+  required S1 entities: 150238
+  matching_results.tsv: 150238 rows (8931 empty, 141307 non-empty).
+  candidate_pairs.tsv: 150238 rows (15 empty, 150223 non-empty).
+
+WARNING: ID-existence check is OFF (the default) — not checking that matched/candidate IDs exist in the test set. Every other rule is still checked. Re-run with --check-ids to enable it (needs test_source2/3.tsv; uses more memory). A nonexistent ID only lowers your score, never rejects your submission.
+PASS — no blocking issues found. Safe to submit.

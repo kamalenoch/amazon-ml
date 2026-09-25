@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "date": "2026-09-25",
+  "public_lb_f05": 0.940493,
+  "holdout_f05": 0.9596886701584996,
+  "threshold": 0.70,
+  "holdout_at_thr": {"precision": 0.9873, "recall": 0.9181, "singleton_acc": 0.9456},
+  "train_blocking_recall": 0.9581,
+  "train_cands_per_s1": 36.6,
+  "test_cands": 63516620,
+  "test_matched_pairs": 5526751,
+  "share_s1_with_match": {"France": 0.939, "India": 0.933, "US": 0.943},
+  "lgb_best_iter": 1500,
+  "runtime_hours": 6.0,
+  "kaggle": "4 vCPU / 31 GB RAM, CPU notebook"
+}

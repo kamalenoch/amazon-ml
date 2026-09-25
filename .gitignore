@@ -1,0 +1,23 @@
+# competition data (organizer property, 2.4 GB) — get it from the shared Kaggle dataset
+dataset/
+student_resource/
+*.zip
+# pipeline caches and outputs — large, live in GitHub Releases / Kaggle outputs
+work/
+work_*/
+output/
+out_*/
+cache/
+devdata/
+*.parquet
+*.tsv
+*.pkl
+*.log
+!results/**/*.log
+# python / os
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+__MACOSX/
+.venv/

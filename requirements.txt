@@ -1,0 +1,7 @@
+# Python 3.11/3.12 (Kaggle CPU image, 4 vCPU / 30 GB RAM)
+numpy==2.0.2
+pandas==2.3.3
+pyarrow>=14
+lightgbm==4.6.0
+rapidfuzz==3.9.7
+unidecode==1.3.8
