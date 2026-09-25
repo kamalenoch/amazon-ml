@@ -43,8 +43,13 @@ def s1_hash(ids):
 
 
 def labels(c, s1, pool, gtp):
-    k = pd.MultiIndex.from_arrays([s1.entity_id.values[c.s1_idx.values], pool.entity_id.values[c.pool_idx.values]])
-    return k.isin(pd.MultiIndex.from_arrays([gtp.s1_id.values, gtp.pool_id.values])).astype(np.int8)
+    """Integer-key join (no 77M-row string MultiIndex): pair key = s1_idx * 2^24 + pool_idx."""
+    si = pd.Index(s1.entity_id.values).get_indexer(gtp.s1_id.values)
+    pj = pd.Index(pool.entity_id.values).get_indexer(gtp.pool_id.values)
+    ok = (si >= 0) & (pj >= 0)
+    gk = np.unique((si[ok].astype(np.int64) << 24) | pj[ok].astype(np.int64))
+    ck = (c.s1_idx.values.astype(np.int64) << 24) | c.pool_idx.values.astype(np.int64)
+    return np.isin(ck, gk, assume_unique=False).astype(np.int8)
 
 
 def write_lists(path, s1_ids, pairs_s1, pairs_pool, col):
