@@ -58,21 +58,35 @@ DATA = os.path.dirname(os.path.dirname(hits[0]))   # .../dataset
 ROOT = os.path.dirname(DATA)                       # .../student_resource
 print(DATA)
 """)
-code("""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
+STAGE = os.environ.get("STAGE", "all")
+if STAGE == "predict":
+    code("""
+# Job F: attach the outputs of job T (model.pkl, prerank.txt) and job S (test_cands.parquet, test_norm_*)
+imp = sorted({os.path.dirname(p) for pat in ("model.pkl", "prerank.txt", "test_cands.parquet", "test_norm_s1.parquet")
+              for p in glob.glob(f"/kaggle/input/**/{pat}", recursive=True)})
+print(imp)
+EXTRA = " ".join(f'"{d}"' for d in imp)
 """)
-code("""
+    code("""
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage predict --extra-work {EXTRA} 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
+""")
+else:
+    code(f"""
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {STAGE} 2>&1 | grep -v "Warning\\\\]" | tee /kaggle/working/run.log
+""")
+if STAGE in ("all", "predict"):
+    code("""
 !python "$ROOT/utils/validate_submission.py" --matching /kaggle/working/output/matching_results.tsv \\
     --candidate /kaggle/working/output/candidate_pairs.tsv --test-dir "$DATA/test"
-!cat /kaggle/working/work/train_report.json | head -5
 """)
 code("""
-# keep everything (caches let the next version skip normalization + blocking)
 !rm -rf /kaggle/working/ber/src/__pycache__
-!du -sh /kaggle/working/*; ls -la /kaggle/working/output /kaggle/working/work
+!du -sh /kaggle/working/*; ls -la /kaggle/working/work /kaggle/working/output 2>/dev/null
 """)
 
 nb = {"cells": cells, "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
                                    "language_info": {"name": "python"}}, "nbformat": 4, "nbformat_minor": 4}
-json.dump(nb, open("notebooks/kaggle_pipeline.ipynb", "w"), indent=1)
-print("wrote notebooks/kaggle_pipeline.ipynb", len(cells), "cells")
+name = {"all": "kaggle_pipeline", "train": "kaggle_T_train", "test-cands": "kaggle_S_test_cands",
+        "predict": "kaggle_F_predict"}[STAGE]
+json.dump(nb, open(f"notebooks/{name}.ipynb", "w"), indent=1)
+print(f"wrote notebooks/{name}.ipynb", len(cells), "cells")

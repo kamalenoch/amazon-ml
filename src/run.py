@@ -75,9 +75,21 @@ def main():
     ap.add_argument("--threshold", type=float, default=None)
     ap.add_argument("--predict-chunk", type=int, default=3_000_000)
     ap.add_argument("--jobs", type=int, default=None)
+    ap.add_argument("--stage", default="all", choices=["all", "train", "test-cands", "predict"],
+                    help="train: stop after model.pkl | test-cands: pre-ranker + test blocking only | "
+                         "predict: needs model.pkl, prerank.txt, test_cands.parquet in --work")
+    ap.add_argument("--extra-work", nargs="*", default=[],
+                    help="dirs whose files are copied into --work first (outputs of other jobs)")
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     os.makedirs(a.out, exist_ok=True)
+    import shutil
+    for d in a.extra_work:
+        for f in os.listdir(d):
+            src, dst = os.path.join(d, f), os.path.join(a.work, f)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                os.symlink(src, dst) if f.endswith(".parquet") else shutil.copy(src, dst)
+                log("imported", f, "from", d)
     W = lambda f: os.path.join(a.work, f)
     kt, kn, ka, kx = map(int, a.wide.split(","))
     wide = dict(k_total=kt, k_name=kn, k_addr=ka, k_cross=kx)
@@ -86,8 +98,38 @@ def main():
     D_START = 10_000 - int(a.d_frac * 10_000)
     assert D_START >= M_END, "dictionary S1 group must not overlap the model group"
 
+    def ensure_prerank(s1, pool, gtp, h, ix):
+        """Deterministic pre-ranker (same data + params -> same model in every job)."""
+        if os.path.exists(W("prerank.txt")):
+            return lgb.Booster(model_file=W("prerank.txt"))
+        cw = generate_candidates(s1, pool, index=ix, s1_subset=h < PR_END, verbose=False, **wide)
+        yw = labels(cw, s1, pool, gtp)
+        ntrue = gtp.s1_id.isin(set(s1.entity_id.values[h < PR_END])).sum()
+        log(f"pre-ranker slice: {len(cw):,} wide pairs, wide recall {yw.sum() / ntrue:.4f}")
+        Xw = prerank_features(cw)
+        prm = dict(objective="binary", learning_rate=0.1, num_leaves=63, min_data_in_leaf=200, verbose=-1,
+                   num_threads=4, deterministic=True, force_row_wise=True, seed=7)
+        from .blocking import _group_rank
+        half = (cw.s1_idx.values % 2) == 0
+        m0 = lgb.train(prm, lgb.Dataset(Xw[half], yw[half]), 200)
+        r = _group_rank(cw.s1_idx.values[~half], m0.predict(Xw[~half]))
+        nt_half = gtp.s1_id.isin(set(s1.entity_id.values[np.unique(cw.s1_idx.values[~half])])).sum()
+        for K in (20, 30, 35, 40, 60):
+            log(f"  pre-ranker recall@{K} {yw[~half][r < K].sum() / nt_half:.4f} (held-out half of slice)")
+        pr = lgb.train(prm, lgb.Dataset(Xw, yw), 200)
+        pr.save_model(W("prerank.txt"))
+        return pr
+
+    if a.stage == "test-cands" and not os.path.exists(W("prerank.txt")):
+        s1, pool = load_split(a.data, "train", a.work, a.jobs)
+        _, gtp = load_gt(os.path.join(a.data, "train", "train_ground_truth.tsv"))
+        ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
+        ensure_prerank(s1, pool, gtp, s1_hash(s1.entity_id.values), ix)
+        del s1, pool, ix
+        gc.collect()
+
     # ================================================================ TRAIN
-    if not os.path.exists(W("model.pkl")):
+    if a.stage in ("all", "train") and not os.path.exists(W("model.pkl")):
         s1, pool = load_split(a.data, "train", a.work, a.jobs)
         log("train loaded", len(s1), len(pool))
         _, gtp = load_gt(os.path.join(a.data, "train", "train_ground_truth.tsv"))
@@ -95,27 +137,7 @@ def main():
 
         if not os.path.exists(W("train_cands.parquet")):
             ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
-            # ---- pre-ranker: wide candidates on a small S1 slice
-            if not os.path.exists(W("prerank.txt")):
-                cw = generate_candidates(s1, pool, index=ix, s1_subset=h < PR_END, verbose=False, **wide)
-                yw = labels(cw, s1, pool, gtp)
-                ntrue = gtp.s1_id.isin(set(s1.entity_id.values[h < PR_END])).sum()
-                log(f"pre-ranker slice: {len(cw):,} wide pairs, wide recall {yw.sum() / ntrue:.4f}")
-                Xw = prerank_features(cw)
-                prm = dict(objective="binary", learning_rate=0.1, num_leaves=63, min_data_in_leaf=200,
-                           verbose=-1, num_threads=0)
-                half = (cw.s1_idx.values % 2) == 0
-                from .blocking import _group_rank
-                pr = lgb.train(prm, lgb.Dataset(Xw[half], yw[half]), 200)
-                s = pr.predict(Xw[~half])
-                r = _group_rank(cw.s1_idx.values[~half], s)
-                nt_half = gtp.s1_id.isin(set(s1.entity_id.values[np.unique(cw.s1_idx.values[~half])])).sum()
-                for K in (20, 30, 35, 40, 60):
-                    log(f"  pre-ranker recall@{K} {yw[~half][r < K].sum() / nt_half:.4f} (held-out half of slice)")
-                pr = lgb.train(prm, lgb.Dataset(Xw, yw), 200)
-                pr.save_model(W("prerank.txt"))
-                del cw, yw, Xw
-            pr = lgb.Booster(model_file=W("prerank.txt"))
+            pr = ensure_prerank(s1, pool, gtp, h, ix)
             c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), **wide)
             del ix
             gc.collect()
@@ -176,10 +198,9 @@ def main():
         del X, c, cm, s1, pool
         gc.collect()
 
-    with open(W("model.pkl"), "rb") as f:
-        M = pickle.load(f)
-    thr = a.threshold if a.threshold is not None else M["thr"]
-    log(f"using threshold {thr:.3f}")
+    if a.stage == "train":
+        log("stage train done")
+        return
 
     # ================================================================ TEST
     s1, pool = load_split(a.data, "test", a.work, a.jobs)
@@ -193,6 +214,13 @@ def main():
         c.to_parquet(W("test_cands.parquet"))
     c = pd.read_parquet(W("test_cands.parquet"))
     log(f"test cands {len(c):,}  per S1 {len(c) / len(s1):.1f}")
+    if a.stage == "test-cands":
+        log("stage test-cands done")
+        return
+    with open(W("model.pkl"), "rb") as f:
+        M = pickle.load(f)
+    thr = a.threshold if a.threshold is not None else M["thr"]
+    log(f"using threshold {thr:.3f}")
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), s1.entity_id.values,
                 s1.entity_id.values[c.s1_idx.values], pool.entity_id.values[c.pool_idx.values],
                 "candidate_entity_ids")
