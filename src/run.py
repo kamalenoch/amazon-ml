@@ -67,7 +67,7 @@ def main():
     ap.add_argument("--wide", default="150,40,40,40", help="k_total,k_name,k_addr,k_cross before pruning")
     ap.add_argument("--k-keep", type=int, default=35, help="candidates kept per S1 after pre-ranking")
     ap.add_argument("--pr-frac", type=float, default=0.05)
-    ap.add_argument("--m-frac", type=float, default=0.25, help="share of train S1 used for the model")
+    ap.add_argument("--m-frac", type=float, default=0.15, help="share of train S1 used for the model")
     ap.add_argument("--holdout", type=float, default=0.2)
     ap.add_argument("--d-frac", type=float, default=0.55, help="share of train S1 used for noise dictionaries")
     ap.add_argument("--rounds", type=int, default=2000)
@@ -160,22 +160,31 @@ def main():
         idf_a = build_idf([s1.ask, pool.ask])
         tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop)
 
-        # ---- features for group M
-        cheap = cheap_features(c, s1, pool)
+        # ---- features for group M (context computed over ALL candidates, materialized for M only)
         m = (hc >= M_START) & (hc < M_END)
-        cm, cheap, y = c[m].reset_index(drop=True), cheap[m].reset_index(drop=True), y_all[m]
-        hm = hc[m]
-        del y_all
+        va_all = hc >= M_START + (1 - a.holdout) * (M_END - M_START)
+        # order M rows as [train..., holdout...] so both are contiguous views (no copies)
+        idx = np.flatnonzero(m)
+        idx = idx[np.argsort(va_all[idx], kind="stable")]
+        cheap = cheap_features(c, s1, pool, rows=idx)
+        cm, y = c.iloc[idx].reset_index(drop=True), y_all[idx]
+        ntr = int((~va_all[idx]).sum())
+        del y_all, c, hc, va_all, m
         gc.collect()
         log(f"features on {len(cm):,} model pairs")
-        X = pd.concat([string_features(cm, s1, pool, tables, a.jobs), cheap], axis=1)
-        del cheap
-        F = feat_cols(X)
-        va = hm >= M_START + (1 - a.holdout) * (M_END - M_START)
-        log(f"fit lgb: train {(~va).sum():,}  holdout {va.sum():,}  pos rate {y.mean():.3f}  feats {len(F)}")
-        model = train_lgb(X.loc[~va, F], y[~va], rounds=a.rounds, valid=(X.loc[va, F], y[va]),
-                          params=dict(learning_rate=a.lr))
-        p = model.predict(X.loc[va, F], num_threads=0)
+        S = string_features(cm, s1, pool, tables, a.jobs)
+        F = list(S.columns) + list(cheap.columns)
+        X = np.empty((len(cm), len(F)), np.float32)
+        X[:, :S.shape[1]] = S.values
+        X[:, S.shape[1]:] = cheap.values
+        del S, cheap
+        gc.collect()
+        log(f"fit lgb: train {ntr:,}  holdout {len(cm) - ntr:,}  pos rate {y.mean():.3f}  feats {len(F)}")
+        model = train_lgb(X[:ntr], y[:ntr], rounds=a.rounds, valid=(X[ntr:], y[ntr:]),
+                          params=dict(learning_rate=a.lr), feature_name=F)
+        va = np.zeros(len(cm), bool)
+        va[ntr:] = True
+        p = model.predict(X[ntr:], num_threads=0)
         hs1 = np.unique(cm.s1_idx.values[va])
         ids, pids = s1.entity_id.values, pool.entity_id.values
         true = gtp[gtp.s1_id.isin(set(ids[hs1]))].rename(columns={"s1_id": "s1", "pool_id": "pool"})
@@ -195,7 +204,7 @@ def main():
                              noise=(nadd, ndrop, aadd, adrop)), f)
         json.dump(dict(holdout_f05=best[0], threshold=float(best[1]), best_iter=model.best_iteration,
                        features=F, args=vars(a)), open(W("train_report.json"), "w"), indent=1)
-        del X, c, cm, s1, pool
+        del X, cm, s1, pool
         gc.collect()
 
     if a.stage == "train":
@@ -229,10 +238,16 @@ def main():
     idf_a = build_idf([s1.ask, pool.ask])
     tables = (*idf_n, *idf_a, *M["noise"])
     p = np.zeros(len(c), np.float32)
+    ch = cheap.values
+    cheap_cols = list(cheap.columns)
+    del cheap
     for k in range(0, len(c), a.predict_chunk):
         sl = slice(k, k + a.predict_chunk)
-        X = pd.concat([string_features(c.iloc[sl], s1, pool, tables, a.jobs), cheap.iloc[sl]], axis=1)
-        p[sl] = M["model"].predict(X[M["feats"]], num_threads=0)
+        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs)
+        X = np.hstack([S.values, ch[sl]])
+        assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
+        p[sl] = M["model"].predict(X, num_threads=0)
+        del S, X
         log(f"  predicted {min(k + a.predict_chunk, len(c)):,}/{len(c):,}")
     pd.DataFrame({"s1_idx": c.s1_idx.values, "pool_idx": c.pool_idx.values, "p": p}).to_parquet(W("test_scores.parquet"))
     sel = select(c.s1_idx.values, c.pool_idx.values, p, thr)

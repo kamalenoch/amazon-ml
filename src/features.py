@@ -171,40 +171,68 @@ def _top2(g, v):
     return t1, t2
 
 
-def context_features(c, score_col, prefix):
-    """Rank / margin of each pair among its S1's candidates and among the pool record's S1s."""
+CTX = ["rank_s1", "gap_s1", "ratio_s1", "top2gap_s1", "rank_pool", "gap_pool", "margin_pool"]
+
+
+def _context_into(out, col0, g1, g2, v, rows):
+    """Write the 7 competition-context features of score v into out[:, col0:col0+7] (rows subset)."""
     from .blocking import _group_rank
-    out = pd.DataFrame(index=c.index)
-    v = c[score_col].values.astype(np.float32)
-    g1, g2 = c.s1_idx.values, c.pool_idx.values
-    out[f"{prefix}_rank_s1"] = _group_rank(g1, v).astype(np.float32)
+    sel = (lambda x: x) if rows is None else (lambda x: x[rows])
+    out[:, col0 + 0] = sel(_group_rank(g1, v))
     t1, t2 = _top2(g1, v)
-    out[f"{prefix}_gap_s1"] = (t1 - v).astype(np.float32)
-    out[f"{prefix}_ratio_s1"] = (v / (t1 + 1e-6)).astype(np.float32)
-    out[f"{prefix}_top2gap_s1"] = (t1 - t2).astype(np.float32)
-    out[f"{prefix}_rank_pool"] = _group_rank(g2, v).astype(np.float32)
+    vv = sel(v)
+    out[:, col0 + 1] = sel(t1) - vv
+    out[:, col0 + 2] = vv / (sel(t1) + 1e-6)
+    out[:, col0 + 3] = sel(t1) - sel(t2)
+    del t1, t2
+    out[:, col0 + 4] = sel(_group_rank(g2, v))
     p1, p2 = _top2(g2, v)
-    out[f"{prefix}_gap_pool"] = (p1 - v).astype(np.float32)
-    other = np.where(v >= p1, p2, p1)
-    out[f"{prefix}_margin_pool"] = (v - other).astype(np.float32)
-    return out
+    p1s, p2s = sel(p1), sel(p2)
+    del p1, p2
+    out[:, col0 + 5] = p1s - vv
+    out[:, col0 + 6] = vv - np.where(vv >= p1s, p2s, p1s)
 
 
-def cheap_features(c, s1, pool):
-    """Vectorized features that need the FULL candidate set (competition context)."""
-    c = c.copy()
-    c["bs_total"] = c.bs_name + c.bs_addr + c.bs_cross
-    X = pd.DataFrame(index=c.index)
-    X["src"] = pool.src.values[c.pool_idx.values].astype(np.float32)
-    X["n_cands_s1"] = c.groupby("s1_idx").s1_idx.transform("size").astype(np.float32)
-    X["n_cands_pool"] = c.groupby("pool_idx").pool_idx.transform("size").astype(np.float32)
-    X["a1_empty"] = (np.asarray(s1.a_clean.str.len().fillna(0).values)[c.s1_idx.values] == 0).astype(np.float32)
-    X["a2_empty"] = (np.asarray(pool.a_clean.str.len().fillna(0).values)[c.pool_idx.values] == 0).astype(np.float32)
-    for col in ["bs_name", "bs_addr", "bs_cross", "bs_nkeys", "bs_nnk", "bs_nak", "bs_nxk", "bs_total",
-                "pr_score", "pr_rank"]:
-        if col in c:
-            X[col] = c[col].astype(np.float32)
-    parts = [X, context_features(c, "bs_total", "bst")]
-    if "pr_score" in c:
-        parts.append(context_features(c, "pr_score", "prs"))
-    return pd.concat(parts, axis=1)
+def context_features(c, score_col, prefix):
+    v = c[score_col].values.astype(np.float32)
+    out = np.empty((len(c), len(CTX)), np.float32)
+    _context_into(out, 0, c.s1_idx.values, c.pool_idx.values, v, None)
+    return pd.DataFrame(out, columns=[f"{prefix}_{k}" for k in CTX], index=c.index)
+
+
+BASE_CHEAP = ["bs_name", "bs_addr", "bs_cross", "bs_nkeys", "bs_nnk", "bs_nak", "bs_nxk", "pr_score", "pr_rank"]
+
+
+def cheap_features(c, s1, pool, rows=None):
+    """Features that need the FULL candidate set (competition context), materialized only for `rows`
+    (bool mask or index array; None = all). One preallocated float32 block, no DataFrame copies:
+    at 77M candidate pairs this is the difference between ~5 GB and an OOM kill."""
+    if rows is not None and np.asarray(rows).dtype == bool:
+        rows = np.flatnonzero(rows)
+    n = len(c) if rows is None else len(rows)
+    sel = (lambda x: x) if rows is None else (lambda x: x[rows])
+    base = [b for b in BASE_CHEAP if b in c]
+    has_pr = "pr_score" in c
+    cols = (["src", "n_cands_s1", "n_cands_pool", "a1_empty", "a2_empty"] + base + ["bs_total"]
+            + [f"bst_{k}" for k in CTX] + ([f"prs_{k}" for k in CTX] if has_pr else []))
+    out = np.empty((n, len(cols)), np.float32)
+    g1, g2 = c.s1_idx.values, c.pool_idx.values
+    si, pj = sel(g1), sel(g2)
+    out[:, 0] = pool.src.values[pj]
+    out[:, 1] = np.bincount(g1, minlength=len(s1))[si]
+    out[:, 2] = np.bincount(g2, minlength=len(pool))[pj]
+    out[:, 3] = (np.asarray(s1.a_clean.str.len().fillna(0).values) == 0)[si]
+    out[:, 4] = (np.asarray(pool.a_clean.str.len().fillna(0).values) == 0)[pj]
+    k = 5
+    for b in base:
+        out[:, k] = sel(c[b].values)
+        k += 1
+    tot = (c.bs_name.values + c.bs_addr.values + c.bs_cross.values).astype(np.float32)
+    out[:, k] = sel(tot)
+    k += 1
+    _context_into(out, k, g1, g2, tot, rows)
+    del tot
+    k += len(CTX)
+    if has_pr:
+        _context_into(out, k, g1, g2, c.pr_score.values.astype(np.float32), rows)
+    return pd.DataFrame(out, columns=cols, copy=False)

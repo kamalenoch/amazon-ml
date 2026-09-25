@@ -14,9 +14,9 @@ def feat_cols(X):
     return [c for c in X.columns if c not in NON_FEATS]
 
 
-def train_lgb(X, y, rounds=600, params=None, valid=None):
+def train_lgb(X, y, rounds=600, params=None, valid=None, feature_name="auto"):
     p = dict(LGB_PARAMS, **(params or {}))
-    dtr = lgb.Dataset(X, y, free_raw_data=True)
+    dtr = lgb.Dataset(X, y, free_raw_data=True, feature_name=feature_name)
     vs = [lgb.Dataset(valid[0], valid[1], reference=dtr)] if valid is not None else []
     cb = [lgb.log_evaluation(100)] + ([lgb.early_stopping(50, verbose=False)] if vs else [])
     return lgb.train(p, dtr, num_boost_round=rounds, valid_sets=vs, callbacks=cb)
