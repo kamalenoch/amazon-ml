@@ -23,6 +23,8 @@ MAX_PAIR_TOKS = 6
 
 
 MAX_CROSS_NAME, MAX_CROSS_ADDR, MAX_ADDR_PAIR = 4, 6, 6
+EXTRA_KEYS = True
+SINGLE_KINDS = set("trpja")
 
 
 def record_keys(country, n_clean, a_clean, nums):
@@ -44,6 +46,13 @@ def record_keys(country, n_clean, a_clean, nums):
     if len(joined) >= 8:                       # 'southernexports.com' <-> 'Southern Exports'
         nk.add(f"j{c}|{joined[:8]}")
     sk = list(dict.fromkeys(sk))[:MAX_PAIR_TOKS]
+    if EXTRA_KEYS:
+        # typo-tolerant name keys: pairs of 4-char prefixes ('consulatscy' ~ 'consultancy')
+        pf = list(dict.fromkeys(t[:4] for t in ntoks if len(t) >= 3))[:MAX_PAIR_TOKS]
+        for i in range(len(pf)):
+            for j in range(i + 1, len(pf)):
+                a, b = (pf[i], pf[j]) if pf[i] < pf[j] else (pf[j], pf[i])
+                nk.add(f"c{c}|{a}|{b}")
     for i in range(len(sk)):
         for j in range(i + 1, len(sk)):
             a, b = (sk[i], sk[j]) if sk[i] < sk[j] else (sk[j], sk[i])
@@ -71,6 +80,12 @@ def record_keys(country, n_clean, a_clean, nums):
         for s_ in sk[:MAX_CROSS_NAME]:
             for a in ask[:MAX_CROSS_ADDR] + nl:
                 xk.add(f"x{c}|{s_}|{a}")
+        if EXTRA_KEYS:
+            nu = list(dict.fromkeys(nums.split()))[:4]
+            for i in range(len(nu)):          # number pairs: '5534 10480' survives a replaced name
+                for j in range(i + 1, len(nu)):
+                    a, b = (nu[i], nu[j]) if nu[i] < nu[j] else (nu[j], nu[i])
+                    ak.add(f"u{c}|{a}|{b}")
     return nk, ak, xk
 
 
@@ -80,7 +95,9 @@ def _keys_chunk(args):
     for i, (c, n, a, u) in enumerate(zip(countries, names, addrs, nums)):
         for fam, ks in enumerate(record_keys(c.lower(), n, a, u)):
             for k in ks:
-                recs.append(off + i); keys.append(k); fams.append(fam)
+                recs.append(off + i); keys.append(k)
+                # fam code: +0 name / +1 addr / +2 cross ; +4 if single-token key (t,r,p,j,a)
+                fams.append(fam + (4 if k[0] in SINGLE_KINDS else 0))
     h = pd.util.hash_array(np.array(keys, dtype=object), categorize=False)
     return np.array(recs, np.int32), h, np.array(fams, np.int8)
 
@@ -99,8 +116,13 @@ def build_keys(df, n_jobs=None, chunk=100_000):
 
 
 def _group_rank(g, score):
-    """rank (0 = best) of each row within its group g, by descending score."""
-    order = np.lexsort((-score, g))
+    """rank (0 = best) of each row within its group g, by descending score.
+    Single int64 argsort on (group, -score) instead of lexsort (~5x faster)."""
+    v = np.asarray(score, np.float32)
+    bits = v.view(np.int32).astype(np.int64)
+    bits = np.where(bits < 0, np.int64(0x7FFFFFFF) - bits, bits)   # order-preserving for negatives
+    key = (np.asarray(g, np.int64) << 32) | (np.int64(0xFFFFFFFF) - (bits + np.int64(0x80000000)) & np.int64(0xFFFFFFFF))
+    order = np.argsort(key, kind="stable")
     gs = g[order]
     first = np.r_[0, np.flatnonzero(gs[1:] != gs[:-1]) + 1]
     rank_sorted = np.arange(len(g)) - np.repeat(first, np.diff(np.r_[first, len(g)]))
@@ -109,35 +131,53 @@ def _group_rank(g, score):
     return rank
 
 
-def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, k_addr=10,
-                        budget=60_000_000, n_jobs=None, verbose=True):
-    """Returns DataFrame [s1_idx, pool_idx, bs_name, bs_addr, bs_nkeys] (row indices into s1/pool)."""
+class KeyIndex:
+    """Sorted pool-key index + S1 key lists; build once, run blocking passes many times."""
+
+    def __init__(self, s1, pool, cap=600, df_scale=1.0, n_jobs=None, verbose=True, cap_composite=None):
+        import time
+        t0 = time.time()
+        pr, pk, pf = build_keys(pool, n_jobs)
+        sr, sk, sf = build_keys(s1, n_jobs)
+        if verbose:
+            print(f"[block] keys pool={len(pk):,} s1={len(sk):,} ({time.time() - t0:.0f}s)", flush=True)
+        order = np.argsort(pk)
+        pk = pk[order]
+        self.pr = pr[order]
+        del order, pf, pr
+        newk = np.empty(len(pk), bool)
+        newk[0] = True
+        np.not_equal(pk[1:], pk[:-1], out=newk[1:])
+        self.starts = np.flatnonzero(newk)
+        uk = pk[self.starts]
+        del pk, newk
+        self.counts = np.diff(np.r_[self.starts, len(self.pr)]).astype(np.int64)
+        self.idf = np.log((len(pool) + 1) / (self.counts + 1)).astype(np.float32)
+        pos = np.searchsorted(uk, sk)
+        pos[pos == len(uk)] = 0
+        capv = np.where(sf >= 4, cap, cap_composite or cap)
+        ok = (uk[pos] == sk) & (self.counts[pos] * df_scale <= capv)
+        self.sr, self.sf, self.pos = sr[ok], (sf[ok] & 3).astype(np.int8), pos[ok]
+        self.n_s1 = len(s1)
+        del sk, ok, uk
+        if verbose:
+            print(f"[block] cap={cap} usable s1 keys={len(self.sr):,} "
+                  f"expansion={self.counts[self.pos].sum():,} ({time.time() - t0:.0f}s)", flush=True)
+
+
+def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, k_addr=10, k_cross=0,
+                        budget=60_000_000, n_jobs=None, verbose=True, prerank=None, s1_subset=None, index=None):
+    """Returns DataFrame [s1_idx, pool_idx, bs_*] (row indices into s1/pool).
+    index: a prebuilt KeyIndex (reuse across passes). s1_subset: bool mask of S1 rows to process.
+    prerank: callable(DataFrame)->DataFrame applied to every chunk's kept pairs (learned pruning)."""
     import time
     t0 = time.time()
-    pr, pk, pf = build_keys(pool, n_jobs)
-    sr, sk, sf = build_keys(s1, n_jobs)
-    if verbose:
-        print(f"[block] keys pool={len(pk):,} s1={len(sk):,} ({time.time() - t0:.0f}s)", flush=True)
-    order = np.argsort(pk)
-    pk = pk[order]
-    pr = pr[order]
-    del order, pf
-    newk = np.empty(len(pk), bool)
-    newk[0] = True
-    np.not_equal(pk[1:], pk[:-1], out=newk[1:])
-    starts = np.flatnonzero(newk)
-    uk = pk[starts]
-    del pk, newk
-    counts = np.diff(np.r_[starts, len(pr)]).astype(np.int64)
-    idf = np.log((len(pool) + 1) / (counts + 1)).astype(np.float32)
-
-    pos = np.searchsorted(uk, sk)
-    pos[pos == len(uk)] = 0
-    ok = (uk[pos] == sk) & (counts[pos] * df_scale <= cap)
-    sr, sf, pos = sr[ok], sf[ok], pos[ok]
-    del sk, ok
-    if verbose:
-        print(f"[block] cap={cap} usable s1 keys={len(sr):,} expansion={counts[pos].sum():,}", flush=True)
+    ix = index or KeyIndex(s1, pool, cap, df_scale, n_jobs, verbose)
+    pr, starts, counts, idf = ix.pr, ix.starts, ix.counts, ix.idf
+    sr, sf, pos = ix.sr, ix.sf, ix.pos
+    if s1_subset is not None:
+        m = s1_subset[sr]
+        sr, sf, pos = sr[m], sf[m], pos[m]
 
     out = []
     # chunk S1 records so each chunk expands to <= budget pairs (bounded memory)
@@ -162,14 +202,23 @@ def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, 
         s_name = np.bincount(inv, weights=w * (fam == 0), minlength=len(up)).astype(np.float32)
         s_addr = np.bincount(inv, weights=w * (fam == 1), minlength=len(up)).astype(np.float32)
         s_cross = np.bincount(inv, weights=w * (fam == 2), minlength=len(up)).astype(np.float32)
+        n_nk = np.bincount(inv, weights=(fam == 0), minlength=len(up)).astype(np.float32)
+        n_ak = np.bincount(inv, weights=(fam == 1), minlength=len(up)).astype(np.float32)
+        n_xk = np.bincount(inv, weights=(fam == 2), minlength=len(up)).astype(np.float32)
         nkeys = np.bincount(inv, minlength=len(up)).astype(np.int16)
         g = (up >> 24).astype(np.int32)
-        keep = (_group_rank(g, s_name + s_addr + s_cross) < k_total) | (_group_rank(g, s_name) < k_name) | \
-               (_group_rank(g, s_addr) < k_addr)
-        out.append(pd.DataFrame({"s1_idx": g[keep], "pool_idx": (up[keep] & ((1 << 24) - 1)).astype(np.int32),
-                                 "bs_name": s_name[keep], "bs_addr": s_addr[keep], "bs_cross": s_cross[keep],
-                                 "bs_nkeys": nkeys[keep]}))
+        s_tot = s_name + s_addr + s_cross
+        keep = (_group_rank(g, s_tot) < k_total) | (_group_rank(g, s_name) < k_name) | \
+               (_group_rank(g, s_addr) < k_addr) | (_group_rank(g, s_cross) < k_cross)
+        blk = pd.DataFrame({"s1_idx": g[keep], "pool_idx": (up[keep] & ((1 << 24) - 1)).astype(np.int32),
+                            "bs_name": s_name[keep], "bs_addr": s_addr[keep], "bs_cross": s_cross[keep],
+                            "bs_nkeys": nkeys[keep], "bs_nnk": n_nk[keep], "bs_nak": n_ak[keep],
+                            "bs_nxk": n_xk[keep]})
+        if prerank is not None:
+            blk = prerank(blk)
+        out.append(blk)
+        del inv, w, fam, s_name, s_addr, s_cross, n_nk, n_ak, n_xk, nkeys, g, s_tot
         if verbose:
-            print(f"[block] s1 rows {r[0]:,}-{r[-1]:,}: expanded {tot:,} -> uniq {len(up):,} -> kept {keep.sum():,}"
+            print(f"[block] s1 rows {r[0]:,}-{r[-1]:,}: expanded {tot:,} -> uniq {len(up):,} -> kept {len(out[-1]):,}"
                   f" ({time.time() - t0:.0f}s)", flush=True)
     return pd.concat(out, ignore_index=True)

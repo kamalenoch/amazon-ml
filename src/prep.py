@@ -4,8 +4,10 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 
-from .normalize import norm_name, norm_addr
+from .normalize import norm_name, norm_addr, skeleton
+from .noise import raw_tokens, raw_numbers
 
+NORM_COLS = ["n_clean", "legal", "a_clean", "nums", "state", "nsk", "ask", "rn", "ra", "ru"]
 READ_KW = dict(sep="\t", dtype=str, keep_default_na=False, quoting=3)
 
 
@@ -23,7 +25,11 @@ def _norm_chunk(args):
     for n, a in zip(names, addrs):
         nc, _, legal = norm_name(n)
         ac, _, nums, st = norm_addr(a)
-        out.append((nc, " ".join(legal), ac, " ".join(nums), st))
+        out.append((nc, " ".join(legal), ac, " ".join(nums), st,
+                    " ".join(skeleton(t) for t in nc.split()),          # name skeleton tokens
+                    " ".join(skeleton(t) if t.isalpha() else t for t in ac.split()),  # addr skeleton tokens
+                    " ".join(raw_tokens(n)), " ".join(raw_tokens(a)),   # raw tokens (noise model)
+                    " ".join(raw_numbers(a))))                          # raw numbers incl. '#' masks
     return out
 
 
@@ -37,16 +43,25 @@ def normalize_df(df, n_jobs=None, chunk=50_000):
     else:
         res = [_norm_chunk(p) for p in parts]
     flat = [r for part in res for r in part]
-    out = pd.DataFrame(flat, columns=["n_clean", "legal", "a_clean", "nums", "state"], index=df.index)
+    out = pd.DataFrame(flat, columns=NORM_COLS, index=df.index)
     # raw text is no longer needed downstream; dropping it roughly halves RAM at full scale
     return pd.concat([df.drop(columns=["business_name", "business_address"]), out], axis=1)
+
+
+def _compact(df):
+    """Arrow-backed strings: ~3x less RAM than Python str objects at 10M rows."""
+    for c in NORM_COLS:
+        if c in df:
+            df[c] = df[c].astype("string[pyarrow]")
+    return df
 
 
 def load_split(data_dir, split, cache_dir=None, n_jobs=None):
     """Returns (s1, pool). pool = S2 ++ S3 with a `src` column (2/3)."""
     cache = os.path.join(cache_dir, f"{split}_norm") if cache_dir else None
     if cache and os.path.exists(cache + "_s1.parquet"):
-        return pd.read_parquet(cache + "_s1.parquet"), pd.read_parquet(cache + "_pool.parquet")
+        return (_compact(pd.read_parquet(cache + "_s1.parquet")),
+                _compact(pd.read_parquet(cache + "_pool.parquet")))
     d = os.path.join(data_dir, split)
     s1 = read_tsv(os.path.join(d, f"{split}_source1.tsv"))
     s2 = read_tsv(os.path.join(d, f"{split}_source2.tsv"))
@@ -60,7 +75,7 @@ def load_split(data_dir, split, cache_dir=None, n_jobs=None):
         os.makedirs(cache_dir, exist_ok=True)
         s1.to_parquet(cache + "_s1.parquet")
         pool.to_parquet(cache + "_pool.parquet")
-    return s1, pool
+    return _compact(s1), _compact(pool)
 
 
 def load_gt(path):

@@ -19,9 +19,11 @@ def code(s):
 md("""
 # Amazon ML Challenge 2026 — Business Entity Resolution
 
-Pipeline: normalize → multi-key IDF blocking → pair features → LightGBM → one-to-one selection.
+v2 pipeline: normalize → key index (cap 1200/600) → learned pre-ranker pruning → noise-model + string features → LightGBM → one-to-one selection.
 Settings: **Accelerator: None (CPU)**, **Internet: On**. Add the challenge data as an Input.
-Use **Save Version → Save & Run All (Commit)** so it runs in the background (≈1.5–2.5 h).
+Run with **Save Version → Save & Run All (Commit)** — only committed versions keep their output files.
+Outputs kept for the team: `output/*.tsv`, `work/model.pkl`, `work/prerank.txt`, `work/holdout_preds.parquet`,
+`work/test_scores.parquet`, `work/*_cands.parquet`, `work/*_norm_*.parquet`, `work/train_report.json`, `run.log`.
 """)
 code("""
 # Offline-safe install: use wheels from an attached dataset if present, else PyPI (needs Internet On)
@@ -57,7 +59,7 @@ ROOT = os.path.dirname(DATA)                       # .../student_resource
 print(DATA)
 """)
 code("""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output 2>&1 | grep -v "Warning\\]"
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
 """)
 code("""
 !python "$ROOT/utils/validate_submission.py" --matching /kaggle/working/output/matching_results.tsv \\
@@ -65,9 +67,9 @@ code("""
 !cat /kaggle/working/work/train_report.json | head -5
 """)
 code("""
-# free disk: keep outputs + model/report, drop big caches
-!rm -f /kaggle/working/work/*_norm_*.parquet /kaggle/working/work/*_cands.parquet
-!ls -la /kaggle/working/output /kaggle/working/work
+# keep everything (caches let the next version skip normalization + blocking)
+!rm -rf /kaggle/working/ber/src/__pycache__
+!du -sh /kaggle/working/*; ls -la /kaggle/working/output /kaggle/working/work
 """)
 
 nb = {"cells": cells, "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},

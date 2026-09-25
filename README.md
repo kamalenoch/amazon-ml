@@ -6,6 +6,7 @@ Metric: macro F0.5 per Source-1 entity (precision-weighted, singletons count).
 | Version | Holdout F0.5 | Public LB | Blocking recall | Notes |
 |---|---|---|---|---|
 | v1 | 0.9597 | **0.9405** | 95.8% | LightGBM, 46 features, one-to-one selection |
+| v2 | pending (dev: 0.9837) | pending | dev 98.1% | + noise-model features, pre-ranker pruning, extra keys, fast features |
 
 Full log: [`docs/experiments.md`](docs/experiments.md) · Data insights: [`docs/eda_findings.md`](docs/eda_findings.md) ·
 Big files (predictions, model, scores): [`artifacts/README.md`](artifacts/README.md) → **Releases**.
