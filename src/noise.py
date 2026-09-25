@@ -32,6 +32,35 @@ def raw_numbers(s: str):
 
 
 # ------------------------------------------------------------------ token log-odds
+class LogOddsCounter:
+    """Incremental version of learn_logodds (feed chunks, then .result())."""
+
+    def __init__(self):
+        self.add_p, self.add_n, self.drop_p, self.drop_n = Counter(), Counter(), Counter(), Counter()
+        self.npos = self.nneg = 0
+
+    def update(self, pairs_a, pairs_b, y):
+        for a, b, t in zip(pairs_a, pairs_b, y):
+            sa, sb = set(a.split()), set(b.split())
+            if t:
+                self.npos += 1
+                self.add_p.update(sb - sa)
+                self.drop_p.update(sa - sb)
+            else:
+                self.nneg += 1
+                self.add_n.update(sb - sa)
+                self.drop_n.update(sa - sb)
+
+    def result(self, min_count=25, prior=1.0):
+        npos, nneg = self.npos, self.nneg
+
+        def lo(cp, cn):
+            return {k: float(np.log((cp[k] + prior) / (npos + prior)) - np.log((cn[k] + prior) / (nneg + prior)))
+                    for k in set(cp) | set(cn) if cp[k] + cn[k] >= min_count}
+
+        return lo(self.add_p, self.add_n), lo(self.drop_p, self.drop_n)
+
+
 def learn_logodds(pairs_a, pairs_b, y, min_count=25, prior=1.0):
     """pairs_a/pairs_b: sequences of token tuples (S1 side, pool side). y: labels.
     Returns (add_lo, drop_lo) dicts: log P(token added | match) / P(token added | non-match)."""

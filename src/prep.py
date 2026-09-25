@@ -56,12 +56,21 @@ def _compact(df):
     return df
 
 
+def _read_arrow(path):
+    """Read parquet straight into Arrow-backed string columns (never materializes Python str objects)."""
+    import pyarrow.parquet as pq
+    t = pq.read_table(path)
+    df = t.to_pandas(types_mapper=lambda typ: pd.StringDtype("pyarrow") if (str(typ) in ("string", "large_string")) else None,
+                     self_destruct=True)
+    del t
+    return df
+
+
 def load_split(data_dir, split, cache_dir=None, n_jobs=None):
     """Returns (s1, pool). pool = S2 ++ S3 with a `src` column (2/3)."""
     cache = os.path.join(cache_dir, f"{split}_norm") if cache_dir else None
     if cache and os.path.exists(cache + "_s1.parquet"):
-        return (_compact(pd.read_parquet(cache + "_s1.parquet")),
-                _compact(pd.read_parquet(cache + "_pool.parquet")))
+        return _read_arrow(cache + "_s1.parquet"), _read_arrow(cache + "_pool.parquet")
     d = os.path.join(data_dir, split)
     s1 = read_tsv(os.path.join(d, f"{split}_source1.tsv"))
     s2 = read_tsv(os.path.join(d, f"{split}_source2.tsv"))

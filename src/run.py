@@ -28,14 +28,25 @@ from .prep import load_split, load_gt
 from .blocking import KeyIndex, generate_candidates
 from .prerank import prerank_features, make_pruner, PR_COLS
 from .features import build_idf, cheap_features, string_features
-from .noise import learn_logodds
+from .noise import LogOddsCounter
 from .matching import train_lgb, feat_cols, select, f05_macro
 
 T0 = time.time()
 
 
+def rss_gb():
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS"):
+                    return int(line.split()[1]) / 1e6
+    except OSError:
+        pass
+    return -1.0
+
+
 def log(*a):
-    print(f"[{time.time() - T0:7.0f}s]", *a, flush=True)
+    print(f"[{time.time() - T0:7.0f}s | {rss_gb():5.1f}GB]", *a, flush=True)
 
 
 def s1_hash(ids):
@@ -52,13 +63,27 @@ def labels(c, s1, pool, gtp):
     return np.isin(ck, gk, assume_unique=False).astype(np.int8)
 
 
-def write_lists(path, s1_ids, pairs_s1, pairs_pool, col):
-    d = pd.DataFrame({"s1": pairs_s1, "pool": pairs_pool}).drop_duplicates()
-    lists = d.groupby("s1").pool.agg(",".join)
-    out = pd.DataFrame({"source1_entity_id": s1_ids})
-    out[col] = out.source1_entity_id.map(lists).fillna("")
-    out.to_csv(path, sep="\t", index=False)
-    return out
+def write_lists(path, s1_ids, s1_idx, pool_ids_col, pool_idx, col, chunk=200_000):
+    """Stream one row per S1 (empty list allowed). Works on integer indices; strings are only
+    materialized per chunk of S1 rows. Returns a bool array: S1 row has >= 1 id."""
+    s1_ids = np.asarray(s1_ids, dtype=object)
+    key = (np.asarray(s1_idx, np.int64) << 24) | np.asarray(pool_idx, np.int64)
+    key = np.unique(key)                       # sorted by s1, dedup
+    ks, kp = (key >> 24).astype(np.int64), (key & ((1 << 24) - 1)).astype(np.int64)
+    bounds = np.searchsorted(ks, np.arange(len(s1_ids) + 1))
+    has = np.diff(bounds) > 0
+    with open(path, "w") as f:
+        f.write(f"source1_entity_id\t{col}\n")
+        for r0 in range(0, len(s1_ids), chunk):
+            r1 = min(r0 + chunk, len(s1_ids))
+            b0, b1 = bounds[r0], bounds[r1]
+            pid = np.asarray(pool_ids_col.take(kp[b0:b1]), dtype=object)
+            lines = []
+            for r in range(r0, r1):
+                lo, hi = bounds[r] - b0, bounds[r + 1] - b0
+                lines.append(f"{s1_ids[r]}\t{','.join(pid[lo:hi])}\n")
+            f.write("".join(lines))
+    return has
 
 
 def main():
@@ -80,6 +105,7 @@ def main():
     ap.add_argument("--threshold", type=float, default=None)
     ap.add_argument("--predict-chunk", type=int, default=3_000_000)
     ap.add_argument("--jobs", type=int, default=None)
+    ap.add_argument("--d-max-pairs", type=int, default=15_000_000, help="max candidate pairs for noise dictionaries")
     ap.add_argument("--stage", default="all", choices=["all", "train", "test-cands", "predict"],
                     help="train: stop after model.pkl | test-cands: pre-ranker + test blocking only | "
                          "predict: needs model.pkl, prerank.txt, test_cands.parquet in --work")
@@ -154,13 +180,20 @@ def main():
         # ---- noise-model dictionaries from group D (not used for model fitting)
         hc = h[c.s1_idx.values]
         d = hc >= D_START
-        di, dj, dy = c.s1_idx.values[d], c.pool_idx.values[d], y_all[d]
-        rn1, rp1 = np.asarray(s1.rn.array.take(di), object), np.asarray(pool.rn.array.take(dj), object)
-        ra1, rpa = np.asarray(s1.ra.array.take(di), object), np.asarray(pool.ra.array.take(dj), object)
-        nadd, ndrop = learn_logodds((x.split() for x in rn1), (x.split() for x in rp1), dy)
-        aadd, adrop = learn_logodds((x.split() for x in ra1), (x.split() for x in rpa), dy)
-        del rn1, rp1, ra1, rpa
-        log(f"noise dicts from {d.sum():,} D pairs: name add {len(nadd)} drop {len(ndrop)} | addr add {len(aadd)} drop {len(adrop)}")
+        dsel = np.flatnonzero(d)
+        if len(dsel) > a.d_max_pairs:   # plenty for token statistics; bounds time and memory
+            dsel = np.sort(np.random.default_rng(0).choice(dsel, a.d_max_pairs, replace=False))
+        cnt_n, cnt_a = LogOddsCounter(), LogOddsCounter()
+        di_all, dj_all, dy_all = c.s1_idx.values[dsel], c.pool_idx.values[dsel], y_all[dsel]
+        for k in range(0, len(dsel), 2_000_000):     # stream: never more than 2M pairs of strings alive
+            di, dj, dy = di_all[k:k + 2_000_000], dj_all[k:k + 2_000_000], dy_all[k:k + 2_000_000]
+            cnt_n.update(s1.rn.array.take(di), pool.rn.array.take(dj), dy)
+            cnt_a.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy)
+        nadd, ndrop = cnt_n.result()
+        aadd, adrop = cnt_a.result()
+        del cnt_n, cnt_a, di_all, dj_all, dy_all, dsel, d
+        gc.collect()
+        log(f"noise dicts from {min(int((hc >= D_START).sum()), a.d_max_pairs):,} D pairs: name add {len(nadd)} drop {len(ndrop)} | addr add {len(aadd)} drop {len(adrop)}")
         idf_n = build_idf([s1.nsk, pool.nsk])
         idf_a = build_idf([s1.ask, pool.ask])
         tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop)
@@ -235,9 +268,9 @@ def main():
         M = pickle.load(f)
     thr = a.threshold if a.threshold is not None else M["thr"]
     log(f"using threshold {thr:.3f}")
-    write_lists(os.path.join(a.out, "candidate_pairs.tsv"), s1.entity_id.values,
-                s1.entity_id.values[c.s1_idx.values], pool.entity_id.values[c.pool_idx.values],
-                "candidate_entity_ids")
+    write_lists(os.path.join(a.out, "candidate_pairs.tsv"), s1.entity_id.values, c.s1_idx.values,
+                pool.entity_id.array, c.pool_idx.values, "candidate_entity_ids")
+    log("wrote candidate_pairs.tsv")
     cheap = cheap_features(c, s1, pool)
     idf_n = build_idf([s1.nsk, pool.nsk])
     idf_a = build_idf([s1.ask, pool.ask])
@@ -256,13 +289,11 @@ def main():
         log(f"  predicted {min(k + a.predict_chunk, len(c)):,}/{len(c):,}")
     pd.DataFrame({"s1_idx": c.s1_idx.values, "pool_idx": c.pool_idx.values, "p": p}).to_parquet(W("test_scores.parquet"))
     sel = select(c.s1_idx.values, c.pool_idx.values, p, thr)
-    out = write_lists(os.path.join(a.out, "matching_results.tsv"), s1.entity_id.values,
-                      s1.entity_id.values[sel.s1.values], pool.entity_id.values[sel.pool.values],
-                      "matched_entity_ids")
-    n = out.matched_entity_ids.str.len().gt(0)
-    log(f"DONE: {len(out):,} S1 rows, {n.mean():.3f} with >=1 match, {len(sel):,} matched pairs "
-        f"({len(sel) / len(out):.2f} per S1)")
-    log("by country (share with match):", out.assign(c=s1.country.values, n=n).groupby("c").n.mean().round(3).to_dict())
+    n = write_lists(os.path.join(a.out, "matching_results.tsv"), s1.entity_id.values, sel.s1.values,
+                    pool.entity_id.array, sel.pool.values, "matched_entity_ids")
+    log(f"DONE: {len(s1):,} S1 rows, {n.mean():.3f} with >=1 match, {len(sel):,} matched pairs "
+        f"({len(sel) / len(s1):.2f} per S1)")
+    log("by country (share with match):", pd.Series(n).groupby(np.asarray(s1.country)).mean().round(3).to_dict())
 
 
 if __name__ == "__main__":
