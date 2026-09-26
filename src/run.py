@@ -135,8 +135,8 @@ def main():
     import shutil
     for d in a.extra_work:
         for f in os.listdir(d):
-            src, dst = os.path.join(d, f), os.path.join(a.work, f)
-            if os.path.isfile(src) and not os.path.exists(dst):
+            src, dst = os.path.abspath(os.path.join(d, f)), os.path.join(a.work, f)
+            if os.path.isfile(src) and not os.path.lexists(dst):   # first job listed wins (T and S share train files)
                 os.symlink(src, dst) if f.endswith(".parquet") else shutil.copy(src, dst)
                 log("imported", f, "from", d)
     W = lambda f: os.path.join(a.work, f)
@@ -329,7 +329,6 @@ def main():
     log("wrote candidate_pairs.tsv")
     if M.get("oov", False) and "oov_f" not in pool:
         pool["oov_f"], pool["oov_n"] = name_oov(s1, pool)
-    cheap = cheap_features(c, s1, pool, fmt=M.get("fmt", False), oov=M.get("oov", False))
     idf_n = build_idf([s1.nsk, pool.nsk])
     idf_a = build_idf([s1.ask, pool.ask])
     fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
@@ -338,17 +337,32 @@ def main():
     extras = M.get("extras", ())
     skel = (*M["skel_dicts"], frequent_tokens([s1.nsk, pool.nsk])) if "skel" in extras else None
     p = np.zeros(len(c), np.float32)
-    ch = cheap.values
-    cheap_cols = list(cheap.columns)
-    del cheap
-    for k in range(0, len(c), a.predict_chunk):
-        sl = slice(k, k + a.predict_chunk)
-        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=M.get("edit_tables"))
-        X = np.hstack([S.values, ch[sl]])
-        assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
-        p[sl] = M["model"].predict(X, num_threads=0)
-        del S, X
-        log(f"  predicted {min(k + a.predict_chunk, len(c)):,}/{len(c):,}")
+    # Keys are country-scoped, so no candidate crosses countries and the competition context of a pair only
+    # involves its own country: building the cheap block one country at a time gives identical features with
+    # about half the peak memory (all ~69M test pairs x 50+ columns at once is ~14 GB plus temporaries).
+    codes, names = pd.factorize(np.asarray(s1.country.values))
+    ctry = codes.astype(np.int16)[c.s1_idx.values]
+    done = 0
+    for ci, ct in enumerate(names):
+        rows = np.flatnonzero(ctry == ci)
+        if not len(rows):
+            continue
+        cc = c.iloc[rows].reset_index(drop=True)
+        cheap = cheap_features(cc, s1, pool, fmt=M.get("fmt", False), oov=M.get("oov", False))
+        ch = cheap.values
+        cheap_cols = list(cheap.columns)
+        del cheap
+        for k in range(0, len(cc), a.predict_chunk):
+            sl = slice(k, k + a.predict_chunk)
+            S = string_features(cc.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=M.get("edit_tables"))
+            X = np.hstack([S.values, ch[sl]])
+            assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
+            p[rows[sl]] = M["model"].predict(X, num_threads=0)
+            done += len(X)
+            del S, X
+            log(f"  predicted {done:,}/{len(c):,} ({ct})")
+        del ch, cc, rows
+        gc.collect()
     pd.DataFrame({"s1_idx": c.s1_idx.values, "pool_idx": c.pool_idx.values, "p": p}).to_parquet(W("test_scores.parquet"))
     sel = select(c.s1_idx.values, c.pool_idx.values, p, thr)
     n = write_lists(os.path.join(a.out, "matching_results.tsv"), s1.entity_id.values, sel.s1.values,

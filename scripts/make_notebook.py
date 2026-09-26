@@ -82,8 +82,17 @@ else:
 """)
 if STAGE in ("all", "predict", "resume"):
     code("""
-!python "$ROOT/utils/validate_submission.py" --matching /kaggle/working/output/matching_results.tsv \\
-    --candidate /kaggle/working/output/candidate_pairs.tsv --test-dir "$DATA/test"
+# Official validator: from the challenge dataset (utils/) or any attached input; must print PASS
+import subprocess
+V = (glob.glob(f"{ROOT}/utils/validate_submission.py")
+     or glob.glob("/kaggle/input/**/validate_submission.py", recursive=True) or [None])[0]
+if V:
+    r = subprocess.run([sys.executable, V, "--matching", "/kaggle/working/output/matching_results.tsv",
+                        "--candidate", "/kaggle/working/output/candidate_pairs.tsv", "--test-dir", f"{DATA}/test"],
+                       capture_output=True, text=True)
+    print(r.stdout[-4000:], r.stderr[-2000:])
+else:
+    print("validate_submission.py not found in the inputs: download output/ and run it locally")
 """)
 code("""
 !rm -rf /kaggle/working/ber/src/__pycache__

@@ -37,6 +37,13 @@ T (compare with v2 at the same step):
 
 F: the validator cell must print `PASS`. `DONE: ... per S1` should be close to v2's 3.30.
 
+## Memory
+
+F builds the pair features one country at a time. No candidate crosses countries, so the features are
+identical (dev check: bit-identical scores and outputs). The peak drops from ~29 GB (all ~69M test pairs × 52
+columns at once, plus a copy) to ~20 GB. T peaks at an estimated ~21 GB (13M model rows × 121 features).
+The validator cell looks for `validate_submission.py` in the challenge data (`utils/`) or any attached input.
+
 ## If something fails
 
 - **Out of memory in T or S** (`Killed`, kernel restart): drop `--cos 60` and rerun that job (the cosine pass is the

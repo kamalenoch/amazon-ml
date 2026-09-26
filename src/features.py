@@ -233,14 +233,16 @@ PA_BITS = ["empty", "allcaps", "masked", "nulltok", "dblspace", "zeropad", "land
 FMT_FEATS = ["pf_" + b for b in PF_BITS] + ["pa_" + b for b in PA_BITS] + ["fmt_noise", "raw_name_eq", "raw_addr_eq"]
 
 
-def fmt_features(c, s1, pool, rows=None):
-    """Raw-format fingerprints of the pool record + raw-string equality with the S1 record."""
+def fmt_features(c, s1, pool, rows=None, out=None):
+    """Raw-format fingerprints of the pool record + raw-string equality with the S1 record.
+    out: optional (n, len(FMT_FEATS)) float32 view to fill in place (no second full-size block)."""
     si, pj = c.s1_idx.values, c.pool_idx.values
     if rows is not None:
         si, pj = si[rows], pj[rows]
     fn = np.asarray(pool.fn.values)[pj].astype(np.int32)
     fa = np.asarray(pool.fa.values)[pj].astype(np.int32)
-    out = np.empty((len(si), len(FMT_FEATS)), np.float32)
+    if out is None:
+        out = np.empty((len(si), len(FMT_FEATS)), np.float32)
     for b in range(len(PF_BITS)):
         out[:, b] = (fn >> b) & 1
     for b in range(len(PA_BITS)):
@@ -315,7 +317,7 @@ def cheap_features(c, s1, pool, rows=None, fmt=False, oov=False):
         _context_into(out, k, g1, g2, c.pr_score.values.astype(np.float32), rows)
         k += len(CTX)
     if fmt:
-        out[:, k:k + len(FMT_FEATS)] = fmt_features(c, s1, pool, rows)
+        fmt_features(c, s1, pool, rows, out=out[:, k:k + len(FMT_FEATS)])
         k += len(FMT_FEATS)
     if oov:
         of, on = np.asarray(pool.oov_f.values)[pj], np.asarray(pool.oov_n.values)[pj]
