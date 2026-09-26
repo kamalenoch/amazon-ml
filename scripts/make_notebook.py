@@ -74,11 +74,11 @@ EXTRA = " ".join(f'"{d}"' for d in imp)
 RUN_STAGE = "__RUN_STAGE__"
 """)
     code("""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {RUN_STAGE} __FLAGS__ --extra-work {EXTRA} 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {RUN_STAGE} __FLAGS__ --extra-work {EXTRA} 2>&1 | grep --line-buffered -v "Warning\\]" | tee /kaggle/working/run.log
 """)
 else:
     code(f"""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {STAGE} {FLAGS} 2>&1 | grep -v "Warning\\\\]" | tee /kaggle/working/run.log
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {STAGE} {FLAGS} 2>&1 | grep --line-buffered -v "Warning\\\\]" | tee /kaggle/working/run.log
 """)
 if STAGE in ("all", "predict", "resume"):
     code("""
