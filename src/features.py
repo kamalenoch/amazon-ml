@@ -155,18 +155,27 @@ def _init(tables, extras=(), skel=None, edits=None, numsign=None):
     _G["numsign"] = numsign
 
 
+def string_feature_cols(extras=()):
+    return [c for c, *_ in CPD] + PY_COLS + extra_cols(extras)
+
+
 def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000, extras=(), skel=None,
-                    edits=None, numsign=None):
+                    edits=None, numsign=None, out=None):
     """tables = (idf_n, dn, idf_a, da, name_add_lo, name_drop_lo, addr_add_lo, addr_drop_lo,
                   frequent_name_tokens, frequent_addr_tokens).
-    Returns a float32 DataFrame (one preallocated block, no intermediate copies)."""
+    Returns a float32 DataFrame (one preallocated block, no intermediate copies).
+    out: optional (n, len(string_feature_cols(extras))) float32 view to fill in place, e.g. the left block of
+    the training matrix, so the string features never exist twice in memory."""
     n_jobs = n_jobs or os.cpu_count()
     ii, jj = cands.s1_idx.values, cands.pool_idx.values
     need = sorted({c for _, c, _, _ in CPD} | set(PY_SRC))
     S1 = {c: s1[c].array for c in need}
     PL = {c: pool[c].array for c in need}
-    cols = [c for c, *_ in CPD] + PY_COLS + extra_cols(extras)
-    out = np.empty((len(ii), len(cols)), np.float32)
+    cols = string_feature_cols(extras)
+    if out is None:
+        out = np.empty((len(ii), len(cols)), np.float32)
+    elif out.shape != (len(ii), len(cols)):
+        raise ValueError(f"out has shape {out.shape}, expected {(len(ii), len(cols))}")
     ncpd = len(CPD)
     with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables, extras, skel, edits, numsign)) as pp:
         for k in range(0, len(ii), chunk):

@@ -33,3 +33,11 @@ sc = pd.read_parquet("test_scores.parquet")
 
 Caches (`train_cands.parquet`, `test_cands.parquet`, `*_norm_*.parquet`, ~5.5 GB) live in the Kaggle dataset
 `kamalenoch/s-and-t`; attach it to skip normalization and blocking.
+
+## Release `v3.1` (public LB 0.969683) — current best
+| File | Size | What it is |
+|---|---|---|
+| `v3.1_matching_results.zip` | 41 MB (96 MB unzipped) | Submitted predictions (LB 0.969683) |
+| `v3.1_candidate_pairs.zip` | 355 MB (803 MB unzipped) | Candidates scored by the model (same as v2: 35 / S1) |
+
+Run: R notebook (train + predict) on the v2 T and S caches. The run log and `model.pkl` of this run were not kept.

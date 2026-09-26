@@ -1,0 +1,18 @@
+{
+  "version": "v3.1 (commit 'v3.1: 2x model training data...' code; run as the R job on the v2 T + S caches)",
+  "date": "2026-09-26",
+  "public_lb_f05": 0.969683,
+  "delta_vs_v2": 0.005698,
+  "changes_vs_v2": [
+    "noise model: frequency-gated fallback for tokens unseen in train (own-country class, legal-form class, phonetic stem) - France",
+    "model rows 2x (m_frac 0.30, d_frac 0.30, holdout 0.15)",
+    "holdout picks global threshold vs per-S1 expected-F0.5 selection"
+  ],
+  "candidates": "v2 test_cands (pre-ranker top-35 per S1)",
+  "test_cands": 60573942, "test_cands_per_s1": 35.0,
+  "test_matched_pairs": 5643152, "matches_per_s1": 3.257,
+  "matches_per_s1_by_country": {"US": 3.35, "India": 3.22, "France": 3.15},
+  "share_s1_with_match": {"US": 0.942, "India": 0.935, "France": 0.938},
+  "france_vs_v2": "French predicted pairs 889,398 -> 817,370 (v2 3.43 per S1 -> 3.15)",
+  "not_kept": "run log and model.pkl of this run were not saved"
+}

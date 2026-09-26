@@ -7,6 +7,9 @@ Metric: macro F0.5 per Source-1 entity (precision-weighted, singletons count).
 |---|---|---|---|---|
 | v1 | 0.9597 | **0.9405** | 95.8% | LightGBM, 46 features, one-to-one selection |
 | v2 | 0.9784 | **0.9640** | 96.6% | + noise-model features, pre-ranker pruning, extra keys, fast features |
+| v3.1 | dev 0.9810 | **0.9697** | 96.6% (v2 candidates) | + France: fallback for tokens unseen in train; 2x model rows; holdout-chosen selection |
+
+**Current best: v3.1 (public LB 0.969683)** — this commit. Outputs: Release `v3.1`, summary: [`results/v3.1`](results/v3.1/summary.json).
 
 Full log: [`docs/experiments.md`](docs/experiments.md) · Data insights: [`docs/eda_findings.md`](docs/eda_findings.md) ·
 Big files (predictions, model, scores): [`artifacts/README.md`](artifacts/README.md) → **Releases**.
