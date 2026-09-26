@@ -30,6 +30,7 @@ from .prerank import prerank_features, make_pruner, PR_COLS
 from .features import build_idf, cheap_features, string_features
 from .noise import LogOddsCounter, frequent_tokens
 from .matching import train_lgb, feat_cols, select, f05_macro
+from .select import expected_f_select
 
 T0 = time.time()
 
@@ -97,9 +98,9 @@ def main():
     ap.add_argument("--wide", default="150,40,40,40", help="k_total,k_name,k_addr,k_cross before pruning")
     ap.add_argument("--k-keep", type=int, default=35, help="candidates kept per S1 after pre-ranking")
     ap.add_argument("--pr-frac", type=float, default=0.05)
-    ap.add_argument("--m-frac", type=float, default=0.15, help="share of train S1 used for the model")
-    ap.add_argument("--holdout", type=float, default=0.2)
-    ap.add_argument("--d-frac", type=float, default=0.55, help="share of train S1 used for noise dictionaries")
+    ap.add_argument("--m-frac", type=float, default=0.30, help="share of train S1 used for the model")
+    ap.add_argument("--holdout", type=float, default=0.15)
+    ap.add_argument("--d-frac", type=float, default=0.30, help="share of train S1 used for noise dictionaries")
     ap.add_argument("--rounds", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.1)
     ap.add_argument("--threshold", type=float, default=None)
@@ -225,24 +226,46 @@ def main():
         va = np.zeros(len(cm), bool)
         va[ntr:] = True
         p = model.predict(X[ntr:], num_threads=0)
-        hs1 = np.unique(cm.s1_idx.values[va])
+        hcut = M_START + (1 - a.holdout) * (M_END - M_START)
+        hs1 = np.flatnonzero((h >= hcut) & (h < M_END))          # ALL holdout S1 (also those w/o candidates)
         ids, pids = s1.entity_id.values, pool.entity_id.values
-        true = gtp[gtp.s1_id.isin(set(ids[hs1]))].rename(columns={"s1_id": "s1", "pool_id": "pool"})
+        # integer-keyed truth for fast scoring (string merges made this loop take ~16 min in v2)
+        gi = pd.Index(ids).get_indexer(gtp.s1_id.values)
+        gj = pd.Index(pids).get_indexer(gtp.pool_id.values)
+        hmask = np.zeros(len(ids), bool)
+        hmask[hs1] = True
+        keep_t = (gi >= 0) & (gj >= 0) & hmask[np.maximum(gi, 0)]
+        true = pd.DataFrame({"s1": gi[keep_t], "pool": gj[keep_t]})
         pd.DataFrame({"s1_idx": cm.s1_idx.values[va], "pool_idx": cm.pool_idx.values[va], "y": y[va], "p": p}) \
             .to_parquet(W("holdout_preds.parquet"))
+        hi, hj = cm.s1_idx.values[va], cm.pool_idx.values[va]
+
+        def score(sel):
+            return f05_macro(sel[["s1", "pool"]], true, hs1)
+
         best = (-1, 0.5)
-        for thr in np.arange(0.30, 0.96, 0.025):
-            sel = select(cm.s1_idx.values[va], cm.pool_idx.values[va], p, thr)
-            f, info = f05_macro(pd.DataFrame({"s1": ids[sel.s1.values], "pool": pids[sel.pool.values]}), true, ids[hs1])
+        for thr in np.arange(0.50, 0.931, 0.025):
+            f, info = score(select(hi, hj, p, thr))
             log(f"  thr {thr:.3f}  F0.5 {f:.4f}  {info}")
             best = max(best, (f, thr))
+        best_ef = (-1, None)
+        for mp_ in (0.0, 0.05, 0.1):
+            for pw in (1.0, 1.25, 1.5, 2.0):
+                f, _ = score(expected_f_select(hi, hj, p, miss_prior=mp_, power=pw))
+                log(f"  expected-F  miss_prior {mp_}  power {pw}  F0.5 {f:.4f}")
+                best_ef = max(best_ef, (f, (mp_, pw)), key=lambda x: x[0])
+        method = ("expected_f", best_ef[1]) if best_ef[0] > best[0] + 1e-4 else ("threshold", best[1])
+        log(f"SELECTION: threshold best {best[0]:.4f} @ {best[1]:.3f} | expected-F best {best_ef[0]:.4f} @ {best_ef[1]}"
+            f" -> using {method}")
         log(f"HOLDOUT F0.5 {best[0]:.4f} at threshold {best[1]:.3f}")
         imp = pd.Series(model.feature_importance("gain"), F).sort_values(ascending=False)
         log("top features", imp.head(20).round(0).to_dict())
         with open(W("model.pkl"), "wb") as f:
-            pickle.dump(dict(model=model, feats=F, thr=float(best[1]), holdout_f05=best[0],
-                             noise=(nadd, ndrop, aadd, adrop)), f)
-        json.dump(dict(holdout_f05=best[0], threshold=float(best[1]), best_iter=model.best_iteration,
+            pickle.dump(dict(model=model, feats=F, thr=float(best[1]), holdout_f05=max(best[0], best_ef[0]),
+                             method=method, noise=(nadd, ndrop, aadd, adrop)), f)
+        json.dump(dict(holdout_f05=max(best[0], best_ef[0]), holdout_f05_threshold=best[0], threshold=float(best[1]),
+                       holdout_f05_expected_f=best_ef[0], expected_f_params=best_ef[1], method=method,
+                       best_iter=model.best_iteration,
                        features=F, args=vars(a)), open(W("train_report.json"), "w"), indent=1)
         del X, cm, s1, pool
         gc.collect()
@@ -292,7 +315,14 @@ def main():
         del S, X
         log(f"  predicted {min(k + a.predict_chunk, len(c)):,}/{len(c):,}")
     pd.DataFrame({"s1_idx": c.s1_idx.values, "pool_idx": c.pool_idx.values, "p": p}).to_parquet(W("test_scores.parquet"))
-    sel = select(c.s1_idx.values, c.pool_idx.values, p, thr)
+    method = M.get("method", ("threshold", thr))
+    if a.threshold is not None:
+        method = ("threshold", a.threshold)
+    if method[0] == "expected_f":
+        sel = expected_f_select(c.s1_idx.values, c.pool_idx.values, p, miss_prior=method[1][0], power=method[1][1])
+    else:
+        sel = select(c.s1_idx.values, c.pool_idx.values, p, method[1])
+    log(f"selection method {method}")
     n = write_lists(os.path.join(a.out, "matching_results.tsv"), s1.entity_id.values, sel.s1.values,
                     pool.entity_id.array, sel.pool.values, "matched_entity_ids")
     log(f"DONE: {len(s1):,} S1 rows, {n.mean():.3f} with >=1 match, {len(sel):,} matched pairs "

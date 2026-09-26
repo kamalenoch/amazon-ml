@@ -64,6 +64,16 @@ The generator is learnable:
 - Rejected variant: stem-variant cancellation (+ ungated fallback): dev holdout 0.9809 -> 0.9796.
 - Gated version: dev holdout 0.9815 (baseline 0.9809); flags 43.9k French predicted pairs (4.9%) vs 1.2k.
 
+## v3.1 decisions (dev, fixed holdout)
+- Training-size learning curve (fixed holdout): 0.44M rows 0.9788 | 0.88M 0.9804 | 1.77M 0.9814 -> gains halve per
+  doubling; best_iter 182-303 (early stopping, not the round cap). Full run v2: 9.3M rows.
+- Dictionaries need only the 15M-pair cap (~20% of train S1), so d_frac 0.55 -> 0.30 and m_frac 0.15 -> 0.30
+  (2x model rows) at no dictionary cost; holdout share 0.20 -> 0.15.
+- Expected-F0.5 per-S1 selection vs tuned global threshold: dev 0.9810 vs 0.9810 (and 0.9815 vs 0.9814 earlier).
+  Both are now evaluated on every holdout and the better one is applied to test automatically.
+- Holdout S1 set is defined by hash (includes S1 without candidates); scoring uses integer keys (seconds, not ~16 min).
+- siblings.py (stage 2, +0.0005 on dev) moved to scripts/experiments/ - not part of the pipeline.
+
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.
   -> run the France diagnostic (`notebooks/diagnostic_france.py`).
