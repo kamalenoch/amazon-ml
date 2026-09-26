@@ -96,6 +96,18 @@ Stage 2 with S1-side context of stage-1 p (2-fold OOF): 0.9860 alone, +0.0003 av
 the pool/S1 competition is already captured by the blocking/pre-ranker margin features.
 Cross-script pool names: 14.8% of true pairs, 16.9% of false merges (miss rate 3.7% vs 2.9%): not a hotspot.
 
+Idea panel (3 reviewers + judge, 8 proposals) - dev tests on the D_edits candidates (paired, `--retrain --extra-work`):
+
+| test | dev holdout F0.5 | detail | decision |
+|---|---|---|---|
+| noise dictionaries from 1/3 of the D pairs (`--d-max-pairs 1050000`) | 0.9860 (vs 0.9861) | dictionaries shrink to 37% | lifting the full-scale 15M cap is not worth it |
+| `--numsign` (signed house-number delta + exact-delta log-odds) | 0.9862 | misses 2,027 -> 1,952 (US 'number one lower' cases), FP 427 -> 438 | optional, matcher-only, within noise |
+| `--morph` (2-3 letter suffix/prefix appends as edit classes) | 0.9859 | suffix-append false merges 18 -> 1, total FP 427 -> 352, but more misses | no |
+
+Waiting on full-scale numbers: reverse top-1 candidates (if v4 T wide recall <= ~0.983) and pre-ranker content features
+(if wide recall - recall@40 >= 0.4pp); both force T + S + F. After F: a threshold adjusted for test's higher decoy rate
+(test has 5.76-5.82 pool records per US/India S1 vs 4.67-4.68 in train).
+
 Findings behind the new flags (dev train candidates, labels from the dictionary/model slices only):
 - **One-letter edits** (`--edits`, FORENSICS-02). For names that differ by one token at Damerau distance 1,
   P(true) depends on where the edit is: insert/delete of the FIRST letter 0.02, insert of the LAST letter 0.10,

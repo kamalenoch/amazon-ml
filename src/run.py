@@ -28,7 +28,7 @@ from .prep import load_split, load_gt
 from .blocking import KeyIndex, generate_candidates
 from .prerank import prerank_features, make_pruner, PR_COLS
 from .features import build_idf, cheap_features, string_features, name_oov
-from .noise import LogOddsCounter, EditCounter, frequent_tokens
+from .noise import LogOddsCounter, EditCounter, DeltaCounter, frequent_tokens
 from .matching import train_lgb, feat_cols, select, f05_macro
 
 T0 = time.time()
@@ -111,6 +111,8 @@ def main():
     ap.add_argument("--numdiff", action="store_true", help="house-number difference structure features (ERR-01)")
     ap.add_argument("--skelnoise", action="store_true", help="noise model on phonetic-skeleton tokens (cross-script)")
     ap.add_argument("--edits", action="store_true", help="one-letter edit class log-odds: typo vs distractor edit")
+    ap.add_argument("--numsign", action="store_true", help="signed house-number delta + log-odds of the exact delta")
+    ap.add_argument("--morph", action="store_true", help="with --edits: 2-3 letter suffix/prefix appends as edit classes")
     ap.add_argument("--k-prior", type=int, default=0, help="reserved wide slots per S1 for empty-address (by name) "
                     "and invented-name (by address) pool records")
     ap.add_argument("--edits-ctx", action="store_true", help="--edits statistics split by lone vs accompanied edit")
@@ -135,6 +137,9 @@ def main():
     if a.edits_ctx:
         import src.noise as _nz
         _nz.EDIT_CTX = a.edits = True
+    if a.morph:
+        import src.noise as _nz
+        _nz.MORPH = a.edits = True
     import shutil
     stale = {"model.pkl", "holdout_preds.parquet", "train_report.json", "test_scores.parquet"} if a.retrain else set()
     for d in a.extra_work:
@@ -221,6 +226,7 @@ def main():
             dsel = np.sort(np.random.default_rng(0).choice(dsel, a.d_max_pairs, replace=False))
         cnt_n, cnt_a, cnt_s = LogOddsCounter(), LogOddsCounter(), LogOddsCounter()
         cnt_en, cnt_ea = EditCounter(), EditCounter()
+        cnt_ns = DeltaCounter()
         di_all, dj_all, dy_all = c.s1_idx.values[dsel], c.pool_idx.values[dsel], y_all[dsel]
         for k in range(0, len(dsel), 2_000_000):     # stream: never more than 2M pairs of strings alive
             di, dj, dy = di_all[k:k + 2_000_000], dj_all[k:k + 2_000_000], dy_all[k:k + 2_000_000]
@@ -232,21 +238,28 @@ def main():
             if a.edits:
                 cnt_en.update(s1.rn.array.take(di), pool.rn.array.take(dj), dy)
                 cnt_ea.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy)
+            if a.numsign:
+                cnt_ns.update(s1.nums.array.take(di), pool.nums.array.take(dj), dy, ct)
         nadd, ndrop = cnt_n.result()
         aadd, adrop = cnt_a.result()
         sadd, sdrop = cnt_s.result() if a.skelnoise else ({}, {})
         edits_t = (cnt_en.result(), cnt_ea.result()) if a.edits else None
+        numsign_t = cnt_ns.result() if a.numsign else None
+        if a.numsign:
+            log("signed number delta log-odds:", {k: round(numsign_t[k], 2) for k in ("us|1", "us|2", "us|-1", "us|-2", "us|7",
+                                                                                       "india|1", "india|-1") if k in numsign_t})
         if a.edits:
             show = {k: round(v, 2) for k, v in edits_t[0].items() if k.split("|")[0][-3:] in ("ins", "sub") and k.count("|") == 1}
             log(f"edit classes: name {len(edits_t[0])} addr {len(edits_t[1])}; name (op|position) log-odds {show}")
-        del cnt_n, cnt_a, cnt_s, cnt_en, cnt_ea, di_all, dj_all, dy_all, dsel, d
+        del cnt_n, cnt_a, cnt_s, cnt_en, cnt_ea, cnt_ns, di_all, dj_all, dy_all, dsel, d
         gc.collect()
         log(f"noise dicts from {min(int((hc >= D_START).sum()), a.d_max_pairs):,} D pairs: name add {len(nadd)} drop {len(ndrop)} | addr add {len(aadd)} drop {len(adrop)}")
         idf_n = build_idf([s1.nsk, pool.nsk])
         idf_a = build_idf([s1.ask, pool.ask])
         fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
         tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop, *fq)
-        extras = tuple(e for e, on in (("numdiff", a.numdiff), ("skel", a.skelnoise), ("edits", a.edits)) if on)
+        extras = tuple(e for e, on in (("numdiff", a.numdiff), ("skel", a.skelnoise), ("edits", a.edits),
+                                        ("numsign", a.numsign)) if on)
         skel = (sadd, sdrop, frequent_tokens([s1.nsk, pool.nsk])) if a.skelnoise else None
 
         # ---- features for group M (context computed over ALL candidates, materialized for M only)
@@ -263,7 +276,7 @@ def main():
         del y_all, c, hc, va_all, m
         gc.collect()
         log(f"features on {len(cm):,} model pairs")
-        S = string_features(cm, s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=edits_t)
+        S = string_features(cm, s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=edits_t, numsign=numsign_t)
         F = list(S.columns) + list(cheap.columns)
         X = np.empty((len(cm), len(F)), np.float32)
         X[:, :S.shape[1]] = S.values
@@ -298,7 +311,8 @@ def main():
         with open(W("model.pkl"), "wb") as f:
             pickle.dump(dict(model=model, feats=F, thr=float(best[1]), holdout_f05=best[0],
                              noise=(nadd, ndrop, aadd, adrop), fmt=a.fmt, extras=extras,
-                             skel_dicts=(sadd, sdrop), edit_tables=edits_t, edit_ctx=a.edits_ctx, oov=a.oov), f)
+                             skel_dicts=(sadd, sdrop), edit_tables=edits_t, edit_ctx=a.edits_ctx, morph=a.morph, oov=a.oov,
+                             numsign_table=numsign_t), f)
         json.dump(dict(holdout_f05=best[0], threshold=float(best[1]), best_iter=model.best_iteration,
                        features=F, args=vars(a)), open(W("train_report.json"), "w"), indent=1)
         del X, cm, s1, pool
@@ -329,6 +343,9 @@ def main():
     if M.get("edit_ctx"):
         import src.noise as _nz
         _nz.EDIT_CTX = True
+    if M.get("morph"):
+        import src.noise as _nz
+        _nz.MORPH = True
     log(f"using threshold {thr:.3f}")
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), s1.entity_id.values, c.s1_idx.values,
                 pool.entity_id.array, c.pool_idx.values, "candidate_entity_ids")
@@ -360,7 +377,8 @@ def main():
         del cheap
         for k in range(0, len(cc), a.predict_chunk):
             sl = slice(k, k + a.predict_chunk)
-            S = string_features(cc.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=M.get("edit_tables"))
+            S = string_features(cc.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=M.get("edit_tables"),
+                                numsign=M.get("numsign_table"))
             X = np.hstack([S.values, ch[sl]])
             assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
             p[rows[sl]] = M["model"].predict(X, num_threads=0)

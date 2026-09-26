@@ -15,7 +15,7 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 from rapidfuzz.process import cpdist
 
-from .noise import token_noise_feats, number_feats, number_diff_feats, edit_feats, TOKEN_COLS, NUM_COLS, NUMD_COLS, EDIT_COLS
+from .noise import token_noise_feats, number_feats, number_diff_feats, edit_feats, number_sign_feats, TOKEN_COLS, NUM_COLS, NUMD_COLS, EDIT_COLS, NUMS_COLS
 
 _G = {}
 
@@ -99,8 +99,9 @@ PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_
 
 
 EXTRA_COLS = {"numdiff": NUMD_COLS, "skel": ["ns_" + c for c in TOKEN_COLS],
-              "edits": ["ce_" + c for c in EDIT_COLS] + ["cea_" + c for c in EDIT_COLS]}
-EXTRA_ORDER = ("numdiff", "skel", "edits")
+              "edits": ["ce_" + c for c in EDIT_COLS] + ["cea_" + c for c in EDIT_COLS],
+              "numsign": NUMS_COLS}
+EXTRA_ORDER = ("numdiff", "skel", "edits", "numsign")
 
 
 def extra_cols(extras):
@@ -137,6 +138,8 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, r
     if "edits" in ex:         # one-letter edit class log-odds: typo (true copy) vs distractor edit
         en, ea = _G["edits"]
         row += edit_feats(rn1.split(), rn2.split(), en) + edit_feats(ra1.split(), ra2.split(), ea)
+    if "numsign" in ex:       # signed house-number delta + learned log-odds of the exact delta
+        row += number_sign_feats(u1, u2, ct1.lower(), _G["numsign"])
     return row
 
 
@@ -144,15 +147,16 @@ def _py_chunk(cols):
     return np.array([_py_row(*r) for r in zip(*cols)], dtype=np.float32)
 
 
-def _init(tables, extras=(), skel=None, edits=None):
+def _init(tables, extras=(), skel=None, edits=None, numsign=None):
     _G["t"] = tables
     _G["extras"] = tuple(extras)
     _G["skel"] = skel
     _G["edits"] = edits
+    _G["numsign"] = numsign
 
 
 def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000, extras=(), skel=None,
-                    edits=None):
+                    edits=None, numsign=None):
     """tables = (idf_n, dn, idf_a, da, name_add_lo, name_drop_lo, addr_add_lo, addr_drop_lo,
                   frequent_name_tokens, frequent_addr_tokens).
     Returns a float32 DataFrame (one preallocated block, no intermediate copies)."""
@@ -164,7 +168,7 @@ def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=1
     cols = [c for c, *_ in CPD] + PY_COLS + extra_cols(extras)
     out = np.empty((len(ii), len(cols)), np.float32)
     ncpd = len(CPD)
-    with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables, extras, skel, edits)) as pp:
+    with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables, extras, skel, edits, numsign)) as pp:
         for k in range(0, len(ii), chunk):
             i, j = ii[k:k + chunk], jj[k:k + chunk]
             A = {c: np.asarray(S1[c].take(i), dtype=object) for c in need}

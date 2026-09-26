@@ -280,6 +280,26 @@ def edit_key(x, z):
 
 
 EDIT_CTX = False           # --edits-ctx: separate statistics when the edit is the ONLY name difference
+MORPH = False              # --morph: also 2-3 letter suffix/prefix appends ('indraksh' -> 'indrakshyn')
+
+
+def _morph_key(x, z):
+    """2-3 letter append/removal at either end of an alphabetic token of >= 3 letters, keyed by the letters
+    themselves so the log-odds table can price each one (distractors append pseudo-suffixes like 'yn')."""
+    if not (x.isalpha() and z.isalpha()) or min(len(x), len(z)) < 3 or not 2 <= abs(len(z) - len(x)) <= 3:
+        return None
+    L = min(len(x), 7)
+    if len(z) > len(x):
+        if z.startswith(x):
+            return "suf", z[len(x):], "", L
+        if z.endswith(x):
+            return "pre", z[:len(z) - len(x)], "", L
+    else:
+        if x.startswith(z):
+            return "dsuf", x[len(z):], "", L
+        if x.endswith(z):
+            return "dpre", x[:len(x) - len(z)], "", L
+    return None
 
 
 def _edits(a, b):
@@ -289,6 +309,8 @@ def _edits(a, b):
     if not drop or not add:
         return []
     ks = [k for x in drop for z in add if abs(len(x) - len(z)) <= 1 for k in (edit_key(x, z),) if k]
+    if MORPH:
+        ks += [k for x in drop for z in add for k in (_morph_key(x, z),) if k]
     if EDIT_CTX:              # a lone one-letter change is the distractor's move; typos come with other noise
         c = "1" if len(drop) == 1 and len(add) == 1 else "m"
         ks = [(c + k[0],) + k[1:] for k in ks]
@@ -336,3 +358,69 @@ def edit_feats(a, b, lo):
         pos.append(lo.get(p_, 0.0))
         ln.append(lo.get(l_, 0.0))
     return (float(len(ks)), min(best), sum(best), min(pos), min(ln))
+
+
+# ------------------------------------------------------------------ signed house-number delta (--numsign)
+NUMS_COLS = ["nums_d", "nums_lo", "nums_sign", "nums_nun"]
+
+
+def _closest_delta(n1, n2):
+    """Signed delta (pool - S1) of the closest same-length pair of numbers the records do NOT share,
+    and the count of unshared S1 numbers. number_diff_feats keeps only |d| of the first S1 number: the sign
+    matters (US distractors shift the house number UP by +1..+5, +7, +9, +11, +13, +21; P(true) is 0.76-0.83
+    at d = -1/-2 but 0.08-0.09 at d = +1/+2 on dev, name Jaccard >= 0.5)."""
+    a, b = n1.split(), n2.split()
+    if not a or not b:
+        return None, 0
+    sa, sb = set(a), set(b)
+    ua = [x for x in a if x not in sb and x.isdigit()]
+    ub = [v for v in b if v not in sa and v.isdigit()]
+    best = None
+    for x in ua:
+        xi = int(x)
+        for v in ub:
+            if len(v) == len(x):
+                dd = int(v) - xi
+                if best is None or abs(dd) < abs(best):
+                    best = dd
+    return best, len(ua)
+
+
+def _delta_key(d):
+    return str(d) if abs(d) <= 50 else ("big+" if d > 0 else "big-")
+
+
+class DeltaCounter:
+    """Log-odds (true vs negative candidate) of the exact signed delta, per country with a pooled back-off."""
+
+    def __init__(self):
+        self.p, self.n = Counter(), Counter()
+        self.npos = self.nneg = 0
+
+    def update(self, pairs_a, pairs_b, y, countries):
+        for a, b, t, ct in zip(pairs_a, pairs_b, y, countries):
+            if t:
+                self.npos += 1
+            else:
+                self.nneg += 1
+            d, _ = _closest_delta(a, b)
+            if d is None:
+                continue
+            k = _delta_key(d)
+            keys = (f"{(ct or '').lower()}|{k}", f"|{k}")
+            (self.p if t else self.n).update(keys)
+
+    def result(self, min_count=20, prior=1.0):
+        return {k: float(np.log((self.p[k] + prior) / (self.npos + prior)) - np.log((self.n[k] + prior) / (self.nneg + prior)))
+                for k in set(self.p) | set(self.n) if self.p[k] + self.n[k] >= min_count}
+
+
+def number_sign_feats(n1, n2, country, lo):
+    d, nun = _closest_delta(n1, n2)
+    if d is None:
+        return (-99999.0, 0.0, 0.0, float(nun))
+    k = _delta_key(d)
+    v = lo.get(f"{country}|{k}")
+    if v is None:
+        v = lo.get(f"|{k}", 0.0)
+    return (float(max(min(d, 10000), -10000)), v, float(np.sign(d)), float(nun))
