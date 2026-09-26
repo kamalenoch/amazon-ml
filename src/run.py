@@ -123,6 +123,9 @@ def main():
                          "predict: needs model.pkl, prerank.txt, test_cands.parquet in --work")
     ap.add_argument("--extra-work", nargs="*", default=[],
                     help="dirs whose files are copied into --work first (outputs of other jobs)")
+    ap.add_argument("--retrain", action="store_true",
+                    help="with --extra-work: reuse imported caches and candidates but NOT an imported model "
+                         "(retrain the matcher with the current code; valid only if normalization/blocking are unchanged)")
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     os.makedirs(a.out, exist_ok=True)
@@ -133,8 +136,11 @@ def main():
         import src.noise as _nz
         _nz.EDIT_CTX = a.edits = True
     import shutil
+    stale = {"model.pkl", "holdout_preds.parquet", "train_report.json", "test_scores.parquet"} if a.retrain else set()
     for d in a.extra_work:
         for f in os.listdir(d):
+            if f in stale:
+                continue
             src, dst = os.path.abspath(os.path.join(d, f)), os.path.join(a.work, f)
             if os.path.isfile(src) and not os.path.lexists(dst):   # first job listed wins (T and S share train files)
                 os.symlink(src, dst) if f.endswith(".parquet") else shutil.copy(src, dst)
