@@ -8,6 +8,7 @@ scored against the full ground truth (blocking misses count as misses).
 | dev | 2026-09-25 | 97.6% | 31.3 | 0.9663 | 0.70 | – | 5-state dev subset, df_scale=15.2 |
 | **v1** | 2026-09-25 | 95.8% | 36.6 | **0.9597** | 0.70 | **0.9405** | full train, 6.0 h on Kaggle CPU |
 | v2-dev | 2026-09-25 | 98.1% | 33.5 | 0.9812 (M holdout) / **0.9837 full-pipeline on unseen S1** | 0.80 | – | dev subset |
+| **v2** | 2026-09-26 | 96.6% | 34.9 | **0.9784** | 0.775 | **0.9640** | full train; T+S+R jobs; results/v2 |
 
 ## v1 details
 - Holdout at thr 0.70: precision 0.987, recall 0.918, singleton accuracy 0.946.
@@ -36,6 +37,17 @@ The generator is learnable:
 | Cap 1200 single / 600 composite (vs 600/600) | wide recall +0.1pp, +12% expansion | yes |
 | Learned pre-ranker, keep 35/S1 | recall@30 +0.4pp vs IDF-sum ranking | yes |
 | rapidfuzz cpdist + preallocated features, arrow strings | ~10x faster features, ~3x less RAM | yes |
+
+## v2 full-scale run (results/v2)
+- Holdout at thr 0.775: precision 0.9967, recall 0.9454, singleton accuracy 0.9888.
+- Blocking: train recall 96.6% (v1 95.8%); pre-ranker keeps 96.5% at K=35 vs 97.8% in the wide set
+  (pruning costs 1.2pp at full scale; 0.4pp on dev).
+- LB 0.9640 vs holdout 0.9784: gap 0.0144 (v1: 0.019). Holdout contains only US + India.
+  If US/India test scored like holdout, France (15% of test) would be ~0.885.
+- Share of S1 with >=1 match: France 0.949, India 0.935, US 0.942.
+- Runtime: T 73 min to candidates; R (dicts + features + LGB + test) 116 min; peak RSS 18.5 GB.
+- Engineering fixes on the way: OOM at 77M pairs (noise dicts as Python objects, parquet load),
+  fixed with Arrow-native loading, streamed dictionaries, preallocated matrices.
 
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.

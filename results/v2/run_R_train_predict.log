@@ -1,0 +1,73 @@
+[      0s |   0.2GB] imported test_norm_pool.parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported train_norm_s1 (1).parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported test_cands.parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported train_norm_pool.parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported train_norm_s1.parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported test_norm_s1.parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported train_cands.parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      0s |   0.2GB] imported train_norm_pool (1).parquet from /kaggle/input/datasets/kamalenoch/s-and-t
+[      8s |   5.0GB] train loaded 2206821 10320219
+[     69s |  12.0GB] train cands 77,090,275  per S1 34.9  blocking recall 0.9660
+[    343s |  10.1GB] noise dicts from 15,000,000 D pairs: name add 50684 drop 47364 | addr add 104925 drop 98392
+[    706s |   8.7GB] features on 11,574,776 model pairs
+[   1331s |  10.7GB] fit lgb: train 9,262,776  holdout 2,312,000  pos rate 0.096  feats 83
+[100]	valid_0's binary_logloss: 0.00573747
+[200]	valid_0's binary_logloss: 0.00524595
+[300]	valid_0's binary_logloss: 0.00514046
+[400]	valid_0's binary_logloss: 0.00510618
+[   2227s |  11.5GB]   thr 0.300  F0.5 0.9706  {'precision': 0.9820494124334982, 'recall': 0.957962403577675, 'singleton_acc': 0.9284570208222104}
+[   2229s |  11.7GB]   thr 0.325  F0.5 0.9716  {'precision': 0.9833458640593602, 'recall': 0.9575157678942672, 'singleton_acc': 0.9324612920448478}
+[   2231s |  11.7GB]   thr 0.350  F0.5 0.9725  {'precision': 0.9846657795606395, 'recall': 0.9569325596253723, 'singleton_acc': 0.9380672717565403}
+[   2234s |  11.7GB]   thr 0.375  F0.5 0.9732  {'precision': 0.9857812705589646, 'recall': 0.9563827145832624, 'singleton_acc': 0.9442071542979178}
+[   2236s |  11.7GB]   thr 0.400  F0.5 0.9740  {'precision': 0.9869303224807813, 'recall': 0.9558007073905318, 'singleton_acc': 0.9492792311799253}
+[   2238s |  11.7GB]   thr 0.425  F0.5 0.9745  {'precision': 0.9878756991061066, 'recall': 0.9551815875798164, 'singleton_acc': 0.9516817939135077}
+[   2241s |  11.7GB]   thr 0.450  F0.5 0.9752  {'precision': 0.9888621184415269, 'recall': 0.9545771730084877, 'singleton_acc': 0.9551521623064603}
+[   2243s |  11.7GB]   thr 0.475  F0.5 0.9757  {'precision': 0.9898786017762162, 'recall': 0.9537614325812552, 'singleton_acc': 0.9591564335290977}
+[   2245s |  11.7GB]   thr 0.500  F0.5 0.9762  {'precision': 0.9907200397621915, 'recall': 0.9531012346947426, 'singleton_acc': 0.9631607047517352}
+[   2248s |  11.7GB]   thr 0.525  F0.5 0.9766  {'precision': 0.9915484936009721, 'recall': 0.9523608379659402, 'singleton_acc': 0.9666310731446877}
+[   2250s |  11.7GB]   thr 0.550  F0.5 0.9770  {'precision': 0.9923720497293625, 'recall': 0.9517116658315172, 'singleton_acc': 0.9706353443673251}
+[   2252s |  11.7GB]   thr 0.575  F0.5 0.9774  {'precision': 0.9930265931310645, 'recall': 0.9511381551405412, 'singleton_acc': 0.9738387613454351}
+[   2255s |  11.7GB]   thr 0.600  F0.5 0.9776  {'precision': 0.9936148403997164, 'recall': 0.9504575135396353, 'singleton_acc': 0.9762413240790176}
+[   2257s |  11.7GB]   thr 0.625  F0.5 0.9778  {'precision': 0.9940821292100294, 'recall': 0.9496594588000488, 'singleton_acc': 0.9775760811532301}
+[   2259s |  11.7GB]   thr 0.650  F0.5 0.9780  {'precision': 0.9946931279896076, 'recall': 0.9489502900515167, 'singleton_acc': 0.9802455953016551}
+[   2262s |  11.7GB]   thr 0.675  F0.5 0.9782  {'precision': 0.9951910922588569, 'recall': 0.9482071988449703, 'singleton_acc': 0.9823812066203951}
+[   2264s |  11.7GB]   thr 0.700  F0.5 0.9781  {'precision': 0.9954953020857431, 'recall': 0.9474857270093802, 'singleton_acc': 0.9829151094500801}
+[   2266s |  11.7GB]   thr 0.725  F0.5 0.9783  {'precision': 0.9960526399811597, 'recall': 0.9467152652470698, 'singleton_acc': 0.9861185264281901}
+[   2269s |  11.7GB]   thr 0.750  F0.5 0.9784  {'precision': 0.9964184227844662, 'recall': 0.946030423057039, 'singleton_acc': 0.987720234917245}
+[   2271s |  11.7GB]   thr 0.775  F0.5 0.9784  {'precision': 0.9967273178573601, 'recall': 0.9453574136914411, 'singleton_acc': 0.9887880405766151}
+[   2273s |  11.7GB]   thr 0.800  F0.5 0.9784  {'precision': 0.9970754242314364, 'recall': 0.9444516243263922, 'singleton_acc': 0.9895888948211425}
+[   2276s |  11.7GB]   thr 0.825  F0.5 0.9783  {'precision': 0.9973881992189106, 'recall': 0.9435630567412645, 'singleton_acc': 0.9906567004805126}
+[   2278s |  11.7GB]   thr 0.850  F0.5 0.9782  {'precision': 0.997681001663014, 'recall': 0.9425522844226002, 'singleton_acc': 0.99145755472504}
+[   2281s |  11.7GB]   thr 0.875  F0.5 0.9778  {'precision': 0.9978933387534499, 'recall': 0.9412064372737136, 'singleton_acc': 0.9917245061398825}
+[   2283s |  11.7GB]   thr 0.900  F0.5 0.9775  {'precision': 0.9982791700937487, 'recall': 0.9392985118995623, 'singleton_acc': 0.994127068873465}
+[   2285s |  11.7GB]   thr 0.925  F0.5 0.9768  {'precision': 0.9986485229703316, 'recall': 0.9366120159102672, 'singleton_acc': 0.9954618259476775}
+[   2287s |  11.7GB]   thr 0.950  F0.5 0.9754  {'precision': 0.9989596445538095, 'recall': 0.9322103259643297, 'singleton_acc': 0.996262680192205}
+[   2287s |  11.7GB] HOLDOUT F0.5 0.9784 at threshold 0.775
+[   2287s |  11.7GB] top features {'bst_margin_pool': 10833647.0, 'prs_margin_pool': 5103472.0, 'bst_gap_pool': 1973921.0, 'bst_rank_pool': 1830358.0, 'nn_add_min': 1672468.0, 'nn_add_sum': 1021855.0, 'num_rel_first': 362488.0, 'num_jacc': 247732.0, 'an_add_sum': 162035.0, 'u_tset': 157694.0, 'an_add_min': 75094.0, 'pr_score': 69715.0, 'n_jw_join': 69234.0, 'legal_eq': 55174.0, 'prs_ratio_s1': 53568.0, 'nn_drop_min': 48106.0, 'nn_n_drop': 41641.0, 'nn_n_add': 39694.0, 'n_miss_idf_r': 39079.0, 'nn_drop_sum': 38105.0}
+[   2297s |   8.2GB] test loaded 1732544 9969589 {'India': 809986, 'US': 663106, 'France': 259452}
+[   2306s |  12.7GB] test cands 60,573,942  per S1 35.0
+[   2307s |  12.7GB] using threshold 0.775
+[   2341s |  10.7GB] wrote candidate_pairs.tsv
+[   2864s |  17.7GB]   predicted 3,000,000/60,573,942
+[   3066s |  17.8GB]   predicted 6,000,000/60,573,942
+[   3278s |  17.6GB]   predicted 9,000,000/60,573,942
+[   3491s |  17.7GB]   predicted 12,000,000/60,573,942
+[   3698s |  17.7GB]   predicted 15,000,000/60,573,942
+[   3909s |  18.0GB]   predicted 18,000,000/60,573,942
+[   4127s |  17.8GB]   predicted 21,000,000/60,573,942
+[   4332s |  17.8GB]   predicted 24,000,000/60,573,942
+[   4546s |  17.7GB]   predicted 27,000,000/60,573,942
+[   4758s |  18.0GB]   predicted 30,000,000/60,573,942
+[   4963s |  17.6GB]   predicted 33,000,000/60,573,942
+[   5181s |  18.0GB]   predicted 36,000,000/60,573,942
+[   5396s |  17.8GB]   predicted 39,000,000/60,573,942
+[   5599s |  17.7GB]   predicted 42,000,000/60,573,942
+[   5812s |  17.6GB]   predicted 45,000,000/60,573,942
+[   6025s |  17.6GB]   predicted 48,000,000/60,573,942
+[   6229s |  18.3GB]   predicted 51,000,000/60,573,942
+[   6444s |  17.9GB]   predicted 54,000,000/60,573,942
+[   6656s |  17.9GB]   predicted 57,000,000/60,573,942
+[   6857s |  18.1GB]   predicted 60,000,000/60,573,942
+[   6900s |  18.5GB]   predicted 60,573,942/60,573,942
+[   6935s |  17.9GB] DONE: 1,732,544 S1 rows, 0.940 with >=1 match, 5,713,715 matched pairs (3.30 per S1)
+[   6935s |  17.9GB] by country (share with match): {'France': 0.949, 'India': 0.935, 'US': 0.942}

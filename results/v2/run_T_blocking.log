@@ -1,0 +1,128 @@
+
+python 3.12.13 rapidfuzz 3.9.7 lightgbm 4.6.0 pandas 2.3.3 numpy 2.0.2
+4
+total        used        free      shared  buff/cache   available
+Mem:              31           0          26           0           4          30
+Swap:              0           0           0
+/kaggle/working/ber
+Writing src/__init__.py
+Writing src/blocking.py
+Writing src/features.py
+Writing src/matching.py
+Writing src/noise.py
+Writing src/normalize.py
+Writing src/prep.py
+Writing src/prerank.py
+Writing src/run.py
+Writing src/select.py
+Writing src/siblings.py
+/kaggle/input/datasets/kamalenoch/amazon-ml-challenge-2026/student_resource/dataset
+[    557s] train loaded 2206821 10320219
+[block] keys pool=322,612,317 s1=71,157,607 (259s)
+[block] cap=1200 usable s1 keys=46,960,766 expansion=4,769,408,440 (501s)
+[   1307s] pre-ranker slice: 19,926,815 wide pairs, wide recall 0.9777
+[   1412s]   pre-ranker recall@20 0.9584 (held-out half of slice)
+[   1412s]   pre-ranker recall@30 0.9638 (held-out half of slice)
+[   1412s]   pre-ranker recall@35 0.9654 (held-out half of slice)
+[   1412s]   pre-ranker recall@40 0.9667 (held-out half of slice)
+[   1412s]   pre-ranker recall@60 0.9699 (held-out half of slice)
+[block] s1 rows 0-27,792: expanded 59,998,362 -> uniq 49,547,611 -> kept 970,714 (32s)
+[block] s1 rows 27,793-55,528: expanded 60,000,874 -> uniq 49,545,039 -> kept 969,001 (64s)
+[block] s1 rows 55,529-83,333: expanded 59,999,220 -> uniq 49,481,773 -> kept 970,941 (95s)
+[block] s1 rows 83,334-111,148: expanded 60,000,615 -> uniq 49,509,047 -> kept 971,600 (127s)
+[block] s1 rows 111,149-138,753: expanded 60,000,909 -> uniq 49,532,298 -> kept 964,438 (159s)
+[block] s1 rows 138,754-166,560: expanded 59,995,430 -> uniq 49,478,452 -> kept 971,248 (191s)
+[block] s1 rows 166,561-194,388: expanded 60,004,007 -> uniq 49,504,348 -> kept 972,270 (227s)
+[block] s1 rows 194,389-222,037: expanded 59,999,521 -> uniq 49,480,347 -> kept 965,968 (260s)
+[block] s1 rows 222,038-249,939: expanded 60,000,265 -> uniq 49,455,526 -> kept 974,857 (291s)
+[block] s1 rows 249,940-277,571: expanded 59,996,742 -> uniq 49,538,147 -> kept 965,108 (324s)
+[block] s1 rows 277,572-305,264: expanded 60,001,919 -> uniq 49,410,417 -> kept 967,041 (356s)
+[block] s1 rows 305,265-332,849: expanded 59,998,614 -> uniq 49,415,767 -> kept 963,568 (388s)
+[block] s1 rows 332,850-360,728: expanded 60,002,113 -> uniq 49,413,266 -> kept 973,864 (421s)
+[block] s1 rows 360,729-388,510: expanded 60,000,802 -> uniq 49,479,370 -> kept 970,312 (453s)
+[block] s1 rows 388,511-416,213: expanded 60,000,310 -> uniq 49,429,569 -> kept 967,898 (486s)
+[block] s1 rows 416,214-443,981: expanded 59,999,151 -> uniq 49,437,577 -> kept 969,707 (519s)
+[block] s1 rows 443,982-471,846: expanded 59,999,282 -> uniq 49,549,069 -> kept 973,280 (551s)
+[block] s1 rows 471,847-499,453: expanded 60,001,113 -> uniq 49,458,661 -> kept 964,492 (583s)
+[block] s1 rows 499,454-527,546: expanded 59,998,971 -> uniq 49,504,564 -> kept 981,461 (616s)
+[block] s1 rows 527,547-555,329: expanded 59,998,245 -> uniq 49,518,956 -> kept 971,023 (648s)
+[block] s1 rows 555,330-583,251: expanded 60,002,488 -> uniq 49,410,703 -> kept 975,462 (681s)
+[block] s1 rows 583,252-610,987: expanded 60,000,125 -> uniq 49,499,301 -> kept 968,918 (713s)
+[block] s1 rows 610,988-638,575: expanded 59,999,496 -> uniq 49,453,360 -> kept 963,941 (746s)
+[block] s1 rows 638,576-666,327: expanded 59,996,552 -> uniq 49,462,602 -> kept 969,459 (778s)
+[block] s1 rows 666,328-693,992: expanded 60,001,146 -> uniq 49,407,806 -> kept 965,999 (811s)
+[block] s1 rows 693,993-721,872: expanded 60,003,600 -> uniq 49,371,304 -> kept 974,045 (843s)
+[block] s1 rows 721,873-749,594: expanded 59,998,827 -> uniq 49,501,243 -> kept 968,538 (875s)
+[block] s1 rows 749,595-777,236: expanded 59,999,646 -> uniq 49,404,141 -> kept 965,663 (907s)
+[block] s1 rows 777,237-804,706: expanded 60,000,998 -> uniq 49,514,860 -> kept 959,830 (940s)
+[block] s1 rows 804,707-832,486: expanded 59,998,186 -> uniq 49,429,311 -> kept 970,583 (972s)
+[block] s1 rows 832,487-860,241: expanded 60,001,948 -> uniq 49,426,859 -> kept 969,568 (1005s)
+[block] s1 rows 860,242-888,202: expanded 59,999,952 -> uniq 49,570,646 -> kept 976,726 (1037s)
+[block] s1 rows 888,203-916,075: expanded 60,000,567 -> uniq 49,441,868 -> kept 973,909 (1070s)
+[block] s1 rows 916,076-943,742: expanded 59,999,305 -> uniq 49,387,591 -> kept 966,722 (1102s)
+[block] s1 rows 943,743-971,397: expanded 59,999,898 -> uniq 49,402,598 -> kept 965,611 (1134s)
+[block] s1 rows 971,398-999,234: expanded 59,995,681 -> uniq 49,519,204 -> kept 972,122 (1166s)
+[block] s1 rows 999,235-1,026,867: expanded 60,003,938 -> uniq 49,496,176 -> kept 965,460 (1199s)
+[block] s1 rows 1,026,868-1,054,787: expanded 59,999,690 -> uniq 49,477,790 -> kept 975,247 (1230s)
+[block] s1 rows 1,054,788-1,082,575: expanded 59,995,203 -> uniq 49,467,503 -> kept 970,151 (1263s)
+[block] s1 rows 1,082,576-1,110,206: expanded 60,004,960 -> uniq 49,492,386 -> kept 965,228 (1294s)
+[block] s1 rows 1,110,207-1,138,008: expanded 60,000,536 -> uniq 49,458,814 -> kept 971,096 (1326s)
+[block] s1 rows 1,138,009-1,165,815: expanded 59,999,119 -> uniq 49,533,172 -> kept 971,255 (1359s)
+[block] s1 rows 1,165,816-1,193,431: expanded 59,996,309 -> uniq 49,421,980 -> kept 964,836 (1391s)
+[block] s1 rows 1,193,432-1,221,297: expanded 60,003,473 -> uniq 49,443,116 -> kept 973,590 (1423s)
+[block] s1 rows 1,221,298-1,248,853: expanded 59,996,989 -> uniq 49,476,966 -> kept 962,601 (1455s)
+[block] s1 rows 1,248,854-1,276,953: expanded 60,004,625 -> uniq 49,467,180 -> kept 981,492 (1487s)
+[block] s1 rows 1,276,954-1,304,750: expanded 59,998,868 -> uniq 49,430,742 -> kept 971,098 (1520s)
+[block] s1 rows 1,304,751-1,332,387: expanded 60,000,796 -> uniq 49,445,780 -> kept 965,557 (1552s)
+[block] s1 rows 1,332,388-1,360,151: expanded 60,000,385 -> uniq 49,446,907 -> kept 970,282 (1587s)
+[block] s1 rows 1,360,152-1,387,961: expanded 59,999,872 -> uniq 49,448,194 -> kept 971,853 (1621s)
+[block] s1 rows 1,387,962-1,415,713: expanded 59,997,093 -> uniq 49,428,208 -> kept 969,291 (1654s)
+[block] s1 rows 1,415,714-1,443,366: expanded 60,002,622 -> uniq 49,479,978 -> kept 966,053 (1687s)
+[block] s1 rows 1,443,367-1,471,123: expanded 60,000,348 -> uniq 49,457,368 -> kept 969,852 (1720s)
+[block] s1 rows 1,471,124-1,498,893: expanded 59,996,856 -> uniq 49,503,195 -> kept 969,901 (1753s)
+[block] s1 rows 1,498,894-1,526,640: expanded 60,002,463 -> uniq 49,487,172 -> kept 969,544 (1786s)
+[block] s1 rows 1,526,641-1,554,543: expanded 60,000,002 -> uniq 49,497,422 -> kept 974,497 (1818s)
+[block] s1 rows 1,554,544-1,582,139: expanded 59,998,947 -> uniq 49,476,943 -> kept 964,087 (1851s)
+[block] s1 rows 1,582,140-1,609,887: expanded 60,001,980 -> uniq 49,413,718 -> kept 969,457 (1883s)
+[block] s1 rows 1,609,888-1,637,670: expanded 59,999,288 -> uniq 49,477,328 -> kept 970,864 (1915s)
+[block] s1 rows 1,637,671-1,665,371: expanded 60,000,305 -> uniq 49,459,993 -> kept 967,689 (1948s)
+[block] s1 rows 1,665,372-1,693,070: expanded 59,998,604 -> uniq 49,433,445 -> kept 967,913 (1981s)
+[block] s1 rows 1,693,071-1,720,992: expanded 60,000,143 -> uniq 49,517,991 -> kept 975,341 (2013s)
+[block] s1 rows 1,720,993-1,749,009: expanded 59,998,896 -> uniq 49,475,300 -> kept 978,454 (2045s)
+[block] s1 rows 1,749,010-1,776,700: expanded 59,999,846 -> uniq 49,491,281 -> kept 967,143 (2076s)
+[block] s1 rows 1,776,701-1,804,291: expanded 60,001,771 -> uniq 49,500,697 -> kept 963,754 (2108s)
+[block] s1 rows 1,804,292-1,832,013: expanded 60,000,913 -> uniq 49,497,903 -> kept 968,347 (2139s)
+[block] s1 rows 1,832,014-1,859,965: expanded 59,999,183 -> uniq 49,469,669 -> kept 976,307 (2172s)
+[block] s1 rows 1,859,966-1,887,667: expanded 59,999,301 -> uniq 49,467,063 -> kept 967,724 (2202s)
+[block] s1 rows 1,887,668-1,915,504: expanded 60,000,847 -> uniq 49,503,341 -> kept 972,420 (2234s)
+[block] s1 rows 1,915,505-1,943,462: expanded 59,998,224 -> uniq 49,444,938 -> kept 976,402 (2266s)
+[block] s1 rows 1,943,463-1,971,174: expanded 60,001,564 -> uniq 49,556,568 -> kept 968,066 (2297s)
+[block] s1 rows 1,971,175-1,999,101: expanded 59,997,072 -> uniq 49,467,065 -> kept 975,594 (2329s)
+[block] s1 rows 1,999,102-2,026,797: expanded 60,000,369 -> uniq 49,511,012 -> kept 967,351 (2362s)
+[block] s1 rows 2,026,798-2,054,531: expanded 60,002,208 -> uniq 49,435,659 -> kept 968,702 (2394s)
+[block] s1 rows 2,054,532-2,082,146: expanded 59,999,121 -> uniq 49,450,180 -> kept 964,472 (2425s)
+[block] s1 rows 2,082,147-2,110,088: expanded 60,001,422 -> uniq 49,558,114 -> kept 976,540 (2456s)
+[block] s1 rows 2,110,089-2,137,945: expanded 59,999,583 -> uniq 49,421,452 -> kept 973,022 (2489s)
+[block] s1 rows 2,137,946-2,165,659: expanded 60,000,578 -> uniq 49,502,921 -> kept 968,119 (2521s)
+[block] s1 rows 2,165,660-2,193,298: expanded 59,998,277 -> uniq 49,516,385 -> kept 965,582 (2553s)
+[block] s1 rows 2,193,299-2,206,820: expanded 29,410,971 -> uniq 24,281,458 -> kept 472,154 (2569s)
+[   4402s] train cands 77,090,275  per S1 34.9  blocking recall 0.9660
+[   4803s] noise dicts from 42,413,778 D pairs: name add 90655 drop 90177 | addr add 223822 drop 312875
+92K	/kaggle/working/ber
+100K	/kaggle/working/__notebook__.ipynb
+4.0K	/kaggle/working/output
+12K	/kaggle/working/run.log
+2.8G	/kaggle/working/work
+/kaggle/working/output:
+total 8
+drwxr-xr-x 2 root root 4096 Sep 25 19:22 .
+drwxr-xr-x 5 root root 4096 Sep 25 19:22 ..
+
+/kaggle/working/work:
+total 2847056
+drwxr-xr-x 2 root root       4096 Sep 25 20:30 .
+drwxr-xr-x 5 root root       4096 Sep 25 19:22 ..
+-rw-r--r-- 1 root root    1412293 Sep 25 19:48 prerank.txt
+-rw-r--r-- 1 root root 1271860841 Sep 25 20:31 train_cands.parquet
+-rw-r--r-- 1 root root 1349811383 Sep 25 19:30 train_norm_pool.parquet
+-rw-r--r-- 1 root root  292278399 Sep 25 19:30 train_norm_s1.parquet

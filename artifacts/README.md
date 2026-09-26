@@ -22,3 +22,14 @@ import pickle, pandas as pd
 M = pickle.load(open("model.pkl", "rb"))       # M["model"].predict(X[M["feats"]])
 sc = pd.read_parquet("test_scores.parquet")
 ```
+
+## Release `v2` (public LB 0.9640, holdout 0.9784)
+| File | Size | What it is |
+|---|---|---|
+| `matching_results.tsv` | 96 MB | Submitted predictions (LB 0.963985) |
+| `candidate_pairs.tsv` | 803 MB | Pre-ranked candidates (35 / S1) scored by the model |
+| `run.log` | 8 KB | R job log (also in `results/v2/run_R_train_predict.log`) |
+| `prerank.txt` | 1.4 MB | Pre-ranker LightGBM model (deterministic) |
+
+Caches (`train_cands.parquet`, `test_cands.parquet`, `*_norm_*.parquet`, ~5.5 GB) live in the Kaggle dataset
+`kamalenoch/s-and-t`; attach it to skip normalization and blocking.

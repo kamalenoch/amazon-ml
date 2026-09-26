@@ -6,7 +6,7 @@ Metric: macro F0.5 per Source-1 entity (precision-weighted, singletons count).
 | Version | Holdout F0.5 | Public LB | Blocking recall | Notes |
 |---|---|---|---|---|
 | v1 | 0.9597 | **0.9405** | 95.8% | LightGBM, 46 features, one-to-one selection |
-| v2 | pending (dev: 0.9837) | pending | dev 98.1% | + noise-model features, pre-ranker pruning, extra keys, fast features |
+| v2 | 0.9784 | **0.9640** | 96.6% | + noise-model features, pre-ranker pruning, extra keys, fast features |
 
 Full log: [`docs/experiments.md`](docs/experiments.md) · Data insights: [`docs/eda_findings.md`](docs/eda_findings.md) ·
 Big files (predictions, model, scores): [`artifacts/README.md`](artifacts/README.md) → **Releases**.
@@ -27,8 +27,10 @@ TSVs ─► normalize ─► blocking (hashed multi-key IDF, top-K) ─► pair 
 - **Selection**: each S2/S3 record goes to at most one S1 (holds for 100% of train ground truth), then `p >= thr`.
 
 ## Run
-**Kaggle (recommended, 4 CPU / 30 GB):** import `notebooks/kaggle_pipeline.ipynb`, add the challenge dataset as
-input, Internet On, *Save & Run All*. ~6 h for v1.
+**Kaggle (4 CPU / 30 GB), as parallel jobs** (see `notebooks/`):
+- `kaggle_T_train.ipynb` (train normalization + blocking) and `kaggle_S_test_cands.ipynb` (test normalization + blocking) run in parallel (~75 min each);
+- `kaggle_R_resume_train_predict.ipynb` imports both outputs, trains and predicts (~2 h), writes `output/`;
+- `kaggle_pipeline.ipynb` runs everything in one job. Always run as *Save & Run All (Commit)*.
 
 **Local / any Linux box (≥ 30 GB RAM):**
 ```bash

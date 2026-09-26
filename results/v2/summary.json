@@ -1,0 +1,20 @@
+{
+  "version": "v2 (commit fe80e5f code, run as T + S + R jobs)",
+  "date": "2026-09-26",
+  "public_lb_f05": 0.963985,
+  "holdout_f05": 0.9784,
+  "threshold": 0.775,
+  "holdout_at_thr": {"precision": 0.9967, "recall": 0.9454, "singleton_acc": 0.9888},
+  "train_blocking_recall": 0.9660,
+  "prerank_recall_at_35_heldout_slice": 0.9654,
+  "wide_recall_prerank_slice": 0.9777,
+  "train_cands": 77090275, "train_cands_per_s1": 34.9,
+  "test_cands": 60573942, "test_cands_per_s1": 35.0,
+  "test_matched_pairs": 5713715, "matches_per_s1": 3.30,
+  "share_s1_with_match": {"France": 0.949, "India": 0.935, "US": 0.942},
+  "model_rows": {"train": 9262776, "holdout": 2312000, "features": 83},
+  "noise_dict_pairs": 15000000,
+  "runtime_s": {"T_normalize_index_prerank_blocking": 4402, "R_train_and_predict": 6935},
+  "peak_rss_gb": 18.5,
+  "kaggle": "4 vCPU / 31 GB RAM CPU notebooks"
+}
