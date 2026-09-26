@@ -27,13 +27,19 @@ def comp_clean(c):
     return " ".join(_NONALNUM.sub(" ", N.to_ascii(c or "").lower().replace(".", " ")).split())
 
 
-def learn_admin(s1_addr, pool_addr, min_share=0.005):
-    last = lambda a: comp_clean(a.split(",")[-1]) if (a or "").strip() else ""
-    a = pd.Series([last(x) for x in s1_addr]).value_counts(normalize=True)
-    b = pd.Series([last(x) for x in pool_addr]).value_counts(normalize=True)
-    both = pd.DataFrame({"s1": a, "pool": b}).fillna(0)
-    keep = both[(both.s1 >= min_share) | ((both.pool >= min_share) & (both.s1 < both.pool / 10))]
-    return {k for k in keep.index if k and not any(ch.isdigit() for ch in k)}
+def learn_admin(s1_addr, pool_addr, min_share=0.015):
+    """Address components that true copies DROP or SWAP: common components whose share in S1 addresses and in pool
+    addresses differ a lot. Regions appear 3x more in S1 (copies drop or replace them), departements only in the pool
+    (the replacements), while cities keep a ratio of ~1 (copies keep them) and are NOT stripped: stripping a city lets
+    decoys that differ only by city through. Learned from the data, no table."""
+    def share(addrs):
+        return pd.Series([c for x in addrs for c in {comp_clean(p) for p in (x or "").split(",")}]).value_counts() / max(len(addrs), 1)
+    a, b = share(s1_addr), share(pool_addr)
+    d = pd.DataFrame({"s1": a, "pool": b}).fillna(0)
+    ok = np.array([bool(k) and not any(ch.isdigit() for ch in k) for k in d.index])
+    d = d[(d.max(axis=1).values >= min_share) & ok]
+    ratio = d.s1 / d.pool.clip(lower=1e-9)
+    return set(d.index[(ratio >= 2) | (ratio <= 0.5)])
 
 
 def strip_admin(addr, admin):
