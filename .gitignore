@@ -8,7 +8,7 @@ work_*/
 output/
 out_*/
 cache/
-devdata/
+devdata
 *.parquet
 *.tsv
 *.pkl
