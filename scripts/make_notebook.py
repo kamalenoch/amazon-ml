@@ -104,7 +104,9 @@ nb = {"cells": cells, "metadata": {"kernelspec": {"display_name": "Python 3", "l
 name = {"all": "kaggle_pipeline", "train": "kaggle_T_train", "test-cands": "kaggle_S_test_cands",
         "predict": "kaggle_F_predict", "resume": "kaggle_R_resume_train_predict"}[STAGE]
 for c in cells:
-    c["source"] = [l.replace("__RUN_STAGE__", "all" if STAGE == "resume" else "predict").replace("__FLAGS__", FLAGS)
+    run_stage = os.environ.get("RUN_STAGE") or ("all" if STAGE == "resume" else "predict")
+    c["source"] = [l.replace("__RUN_STAGE__", run_stage).replace("__FLAGS__", FLAGS)
                    for l in c["source"]]
+name = os.environ.get("NB_NAME", name)
 json.dump(nb, open(f"notebooks/{name}{SUFFIX}.ipynb", "w"), indent=1)
 print(f"wrote notebooks/{name}{SUFFIX}.ipynb", len(cells), "cells", "flags:", FLAGS or "(none)")

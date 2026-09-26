@@ -126,6 +126,8 @@ def main():
                          "predict: needs model.pkl, prerank.txt, test_cands.parquet in --work")
     ap.add_argument("--extra-work", nargs="*", default=[],
                     help="dirs whose files are copied into --work first (outputs of other jobs)")
+    ap.add_argument("--countries", default="", help="predict only these S1 countries (comma list); other rows are "
+                    "left empty - combine the per-country outputs with scripts/combine_by_country.py")
     ap.add_argument("--retrain", action="store_true",
                     help="with --extra-work: reuse imported caches and candidates but NOT an imported model "
                          "(retrain the matcher with the current code; valid only if normalization/blocking are unchanged)")
@@ -396,9 +398,12 @@ def main():
     codes, names = pd.factorize(np.asarray(s1.country.values))
     ctry = codes.astype(np.int16)[c.s1_idx.values]
     done = 0
+    only = {x.strip().lower() for x in a.countries.split(",") if x.strip()}
+    if only:
+        log(f"predicting only {sorted(only)} (other countries left empty)")
     for ci, ct in enumerate(names):
         rows = np.flatnonzero(ctry == ci)
-        if not len(rows):
+        if not len(rows) or (only and str(ct).lower() not in only):
             continue
         cc = c.iloc[rows].reset_index(drop=True)
         cheap = cheap_features(cc, s1, pool, fmt=M.get("fmt", False), oov=M.get("oov", False))
