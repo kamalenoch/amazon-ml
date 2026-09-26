@@ -74,6 +74,11 @@ The generator is learnable:
 - Holdout S1 set is defined by hash (includes S1 without candidates); scoring uses integer keys (seconds, not ~16 min).
 - siblings.py (stage 2, +0.0005 on dev) moved to scripts/experiments/ - not part of the pipeline.
 
+## v3.1 result
+- Public LB 0.969683 (v2 0.963985, +0.0057). Only France-targeted changes and more model rows went in, on the same
+  v2 candidates -> most of the LB-holdout gap was France.
+- French predictions 3.43 -> 3.15 per S1; US / India unchanged.
+
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.
   -> run the France diagnostic (`notebooks/diagnostic_france.py`).
