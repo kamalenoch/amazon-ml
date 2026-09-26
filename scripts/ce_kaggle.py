@@ -114,6 +114,8 @@ def main():
     ap.add_argument("--pred-work", required=True)
     ap.add_argument("--test-work", required=True)
     ap.add_argument("--cands", required=True)
+    ap.add_argument("--scores", nargs="*", default=None, help="dirs with test_scores.parquet (per-country predict jobs); "
+                    "merged by max. Default: --pred-work")
     ap.add_argument("--out", required=True)
     ap.add_argument("--model", default="intfloat/multilingual-e5-small")
     ap.add_argument("--n-pos", type=int, default=400_000)
@@ -205,7 +207,15 @@ def main():
     json.dump(dict(f05=best[0], w=best[1], thr=best[2]), open(os.path.join(a.out, "ce_blend.json"), "w"))
 
     # ---------------- test
-    ts = pd.read_parquet(os.path.join(a.pred_work, "test_scores.parquet"))
+    ts = None
+    for d in (a.scores or [a.pred_work]):
+        x = pd.read_parquet(os.path.join(d, "test_scores.parquet"))
+        if ts is None:
+            ts = x
+        else:
+            assert len(x) == len(ts) and (x.s1_idx.values == ts.s1_idx.values).all(), "different candidate sets"
+            ts["p"] = np.maximum(ts.p.values, x.p.values)
+    log(f"test scores from {len(a.scores or [a.pred_work])} dir(s): {len(ts):,} pairs")
     t1 = _read_arrow(os.path.join(a.test_work, "test_norm_s1.parquet"))[["entity_id"]]
     tp_ = _read_arrow(os.path.join(a.test_work, "test_norm_pool.parquet"))[["entity_id"]]
     tids, tpids = np.asarray(t1.entity_id.values, dtype=object), np.asarray(tp_.entity_id.values, dtype=object)
