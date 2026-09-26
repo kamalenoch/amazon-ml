@@ -166,10 +166,12 @@ class KeyIndex:
 
 
 def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, k_addr=10, k_cross=0,
-                        budget=60_000_000, n_jobs=None, verbose=True, prerank=None, s1_subset=None, index=None):
+                        budget=60_000_000, n_jobs=None, verbose=True, prerank=None, s1_subset=None, index=None,
+                        k_pool=3):
     """Returns DataFrame [s1_idx, pool_idx, bs_*] (row indices into s1/pool).
     index: a prebuilt KeyIndex (reuse across passes). s1_subset: bool mask of S1 rows to process.
-    prerank: callable(DataFrame)->DataFrame applied to every chunk's kept pairs (learned pruning)."""
+    prerank: scorer from prerank.make_pruner; keeps the S1-side top-k_keep per S1 AND, across all chunks,
+    each pool record's top-k_pool S1s (pool-side view: 97.7% of true pairs are their pool record's #1)."""
     import time
     t0 = time.time()
     ix = index or KeyIndex(s1, pool, cap, df_scale, n_jobs, verbose)
@@ -180,6 +182,7 @@ def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, 
         sr, sf, pos = sr[m], sf[m], pos[m]
 
     out = []
+    pool_top = PoolTopK(ix.pr.max() + 1 if len(ix.pr) else 0, k_pool) if (prerank is not None and k_pool) else None
     # chunk S1 records so each chunk expands to <= budget pairs (bounded memory)
     rec_exp = np.bincount(sr, weights=counts[pos], minlength=len(s1))
     cum = np.cumsum(rec_exp)
@@ -216,9 +219,69 @@ def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, 
                             "bs_nxk": n_xk[keep]})
         if prerank is not None:
             blk = prerank(blk)
+            if k_pool:
+                pool_top.update(blk)
+            keep_s1 = blk.pr_rank.values < prerank.k_keep
+            if prerank.p_keep is not None:
+                keep_s1 |= blk.pr_score.values >= prerank.p_keep
+            blk = blk[keep_s1]
         out.append(blk)
         del inv, w, fam, s_name, s_addr, s_cross, n_nk, n_ak, n_xk, nkeys, g, s_tot
         if verbose:
             print(f"[block] s1 rows {r[0]:,}-{r[-1]:,}: expanded {tot:,} -> uniq {len(up):,} -> kept {len(out[-1]):,}"
                   f" ({time.time() - t0:.0f}s)", flush=True)
-    return pd.concat(out, ignore_index=True)
+    res = pd.concat(out, ignore_index=True)
+    if pool_top is not None:
+        extra = pool_top.frame()
+        n_before = len(res)
+        key = (res.s1_idx.values.astype(np.int64) << 24) | res.pool_idx.values.astype(np.int64)
+        ek = (extra.s1_idx.values.astype(np.int64) << 24) | extra.pool_idx.values.astype(np.int64)
+        extra = extra[~np.isin(ek, key)]
+        res = pd.concat([res, extra[res.columns]], ignore_index=True)
+        if verbose:
+            print(f"[block] pool-side top-{k_pool}: +{len(extra):,} pairs ({n_before:,} -> {len(res):,})", flush=True)
+    return res
+
+
+class PoolTopK:
+    """Running top-k (by pr_score) S1 candidates per pool record across S1 chunks, with their features."""
+    COLS = ["bs_name", "bs_addr", "bs_cross", "bs_nkeys", "bs_nnk", "bs_nak", "bs_nxk", "pr_score", "pr_rank"]
+
+    def __init__(self, n_pool, k):
+        self.k = k
+        self.s1 = np.full((n_pool, k), -1, np.int32)
+        self.sc = np.full((n_pool, k), -np.inf, np.float32)
+        self.f = np.zeros((n_pool, k, len(self.COLS)), np.float32)
+
+    def update(self, b):
+        if len(b) == 0:
+            return
+        k = self.k
+        pj = b.pool_idx.values
+        r = _group_rank(pj, b.pr_score.values)
+        top = r < k
+        pj, si, sc = pj[top], b.s1_idx.values[top], b.pr_score.values[top].astype(np.float32)
+        fe = np.stack([b[c].values[top].astype(np.float32) for c in self.COLS], axis=1)
+        P = np.unique(pj)
+        # candidates = current slots of affected pool records + this chunk's top-k
+        cp = np.concatenate([np.repeat(P, k), pj])
+        cs1 = np.concatenate([self.s1[P].ravel(), si])
+        csc = np.concatenate([self.sc[P].ravel(), sc])
+        cfe = np.concatenate([self.f[P].reshape(-1, len(self.COLS)), fe])
+        valid = cs1 >= 0
+        cp, cs1, csc, cfe = cp[valid], cs1[valid], csc[valid], cfe[valid]
+        rr = _group_rank(cp, csc)
+        sel = rr < k
+        self.s1[P] = -1
+        self.sc[P] = -np.inf
+        self.s1[cp[sel], rr[sel]] = cs1[sel]
+        self.sc[cp[sel], rr[sel]] = csc[sel]
+        self.f[cp[sel], rr[sel]] = cfe[sel]
+
+    def frame(self):
+        pj, slot = np.nonzero(self.s1 >= 0)
+        d = {"s1_idx": self.s1[pj, slot], "pool_idx": pj.astype(np.int32)}
+        for i, c in enumerate(self.COLS):
+            d[c] = self.f[pj, slot, i]
+        d["bs_nkeys"] = d["bs_nkeys"].astype(np.int16)
+        return pd.DataFrame(d)

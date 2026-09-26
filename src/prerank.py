@@ -24,17 +24,14 @@ def prerank_features(b):
 
 
 def make_pruner(model, k_keep, p_keep=None):
-    """Keep top-k_keep per S1 by pre-rank score (and anything with score >= p_keep)."""
-    def prune(b):
+    """Scores every wide pair of a chunk; generate_candidates keeps the S1-side top-k_keep and feeds all
+    scored rows to the global pool-side top-k tracker."""
+    def score(b):
         if len(b) == 0:
-            return b
+            return b.assign(pr_score=np.zeros(0, np.float32), pr_rank=np.zeros(0, np.float32))
         s = model.predict(prerank_features(b), num_threads=0).astype(np.float32)
         r = _group_rank(b.s1_idx.values, s)
-        keep = r < k_keep
-        if p_keep is not None:
-            keep |= s >= p_keep
-        out = b[keep].copy()
-        out["pr_score"] = s[keep]
-        out["pr_rank"] = r[keep].astype(np.float32)
-        return out
-    return prune
+        return b.assign(pr_score=s, pr_rank=r.astype(np.float32))
+    score.k_keep = k_keep
+    score.p_keep = p_keep
+    return score

@@ -103,6 +103,9 @@ def main():
     ap.add_argument("--d-frac", type=float, default=0.30, help="share of train S1 used for noise dictionaries")
     ap.add_argument("--rounds", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=0.1)
+    ap.add_argument("--num-leaves", type=int, default=127)
+    ap.add_argument("--min-data", type=int, default=100)
+    ap.add_argument("--k-pool", type=int, default=3, help="pool-side top-k S1 candidates per pool record")
     ap.add_argument("--threshold", type=float, default=None)
     ap.add_argument("--predict-chunk", type=int, default=3_000_000)
     ap.add_argument("--jobs", type=int, default=None)
@@ -170,7 +173,7 @@ def main():
         if not os.path.exists(W("train_cands.parquet")):
             ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
             pr = ensure_prerank(s1, pool, gtp, h, ix)
-            c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), **wide)
+            c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), k_pool=a.k_pool, **wide)
             del ix
             gc.collect()
             c.to_parquet(W("train_cands.parquet"))
@@ -222,7 +225,8 @@ def main():
         gc.collect()
         log(f"fit lgb: train {ntr:,}  holdout {len(cm) - ntr:,}  pos rate {y.mean():.3f}  feats {len(F)}")
         model = train_lgb(X[:ntr], y[:ntr], rounds=a.rounds, valid=(X[ntr:], y[ntr:]),
-                          params=dict(learning_rate=a.lr), feature_name=F)
+                          params=dict(learning_rate=a.lr, num_leaves=a.num_leaves, min_data_in_leaf=a.min_data),
+                          feature_name=F)
         va = np.zeros(len(cm), bool)
         va[ntr:] = True
         p = model.predict(X[ntr:], num_threads=0)
@@ -280,7 +284,7 @@ def main():
     if not os.path.exists(W("test_cands.parquet")):
         pr = lgb.Booster(model_file=W("prerank.txt"))
         ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
-        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), **wide)
+        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), k_pool=a.k_pool, **wide)
         del ix
         gc.collect()
         c.to_parquet(W("test_cands.parquet"))

@@ -79,6 +79,29 @@ The generator is learnable:
   v2 candidates -> most of the LB-holdout gap was France.
 - French predictions 3.43 -> 3.15 per S1; US / India unchanged.
 
+## v4: decoding the distractor generator (dev, ground truth)
+Structure: ~1.2 distractors per S1 (train: 2.68M distractors / 2.2M S1); 84% of S1 have a distractor as nearest
+neighbour. 97.5% of model-missed true pairs already point to the right S1 -> the task is true-copy vs distractor.
+Distractor = "the business next door": same name/street, house number shifted by a small amount and/or legal form
+swapped / marker word added.
+
+| Signal | True pairs | Distractors |
+|---|---|---|
+| house number shifted by 1-20 | 0.9% | 43.0% |
+| house number equal | 80.8% | 35.0% |
+| legal form swapped (LLC->Corp, Private->Public) | 0.26% | 14.8% |
+| legal form added | 5.6% | 15.6% |
+
+Candidate side: 97.7% of true pairs are their pool record's #1 S1, so each pool record's top-3 S1 (running top-k
+across S1 chunks, pre-ranker score) is added to the S1-side top-35: recall 98.11% -> 98.50% for +3% pairs (dev).
+
+| Change (dev, same holdout / same unseen S1) | Result |
+|---|---|
+| + number-shift alignment features + legal-transition flags | holdout 0.9810 -> 0.9825 |
+| + pool-side top-3 candidates | holdout 0.9835 (expected-F selection now wins by +0.0003) |
+| 255 leaves instead of 127 | 0.9827 (rejected) |
+| Full pipeline on 7,503 never-seen S1: v2 / v3.1 / v4 | 0.9815 / 0.9810 / **0.9852** |
+
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.
   -> run the France diagnostic (`notebooks/diagnostic_france.py`).

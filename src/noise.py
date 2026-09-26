@@ -212,4 +212,27 @@ def number_feats(a, b):
     return (float(best), float(first), n_eq / len(a), n_soft / len(a), n_sub / len(a), float(len(a)), float(len(b)))
 
 
+def number_shift_feats(a, b):
+    """Numeric alignment of S1 house/plot numbers to pool numbers. Distractors ('the business next
+    door') shift the number by a small amount (4301->4306, 8159->8162, 4996->5003): 43% of distractors vs
+    0.9% of true pairs have a 1-20 shift; single-digit-substitution rules miss most of these."""
+    A = [int(x) for x in a if x.isdigit() and len(x) <= 9][:8]
+    B = [int(x) for x in b if x.isdigit() and len(x) <= 9][:8]
+    if not A or not B:
+        return (-1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+    ds = [min(abs(x - y) for y in B) for x in A]
+    n = len(A)
+    nz = [d for d in ds if d > 0]
+    d0 = ds[0]
+    return (sum(d == 0 for d in ds) / n,                       # share of S1 numbers found exactly
+            sum(1 <= d <= 20 for d in ds) / n,                 # share shifted by a small amount
+            float(min(nz)) if nz else 0.0,                     # smallest non-zero shift
+            float(min(d0, 100000)),                            # shift of the first (house) number
+            float(1 <= d0 <= 20),                              # house number shifted a little
+            d0 / (A[0] + 1.0))                                 # relative shift
+
+
+SHIFT_COLS = ["nshift_exact_frac", "nshift_small_frac", "nshift_min_nz", "nshift_first", "nshift_first_small",
+              "nshift_first_rel"]
+
 NUM_COLS = ["num_rel_best", "num_rel_first", "num_eq_frac", "num_soft_frac", "num_sub_frac", "num_n1", "num_n2"]

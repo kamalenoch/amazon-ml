@@ -15,7 +15,7 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 from rapidfuzz.process import cpdist
 
-from .noise import token_noise_feats, number_feats, TOKEN_COLS, NUM_COLS
+from .noise import token_noise_feats, number_feats, number_shift_feats, TOKEN_COLS, NUM_COLS, SHIFT_COLS
 
 _G = {}
 
@@ -95,7 +95,8 @@ PY_SRC = ["nsk", "ask", "legal", "nums", "state", "rn", "ra", "ru", "country"]
 PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_ntok1", "n_ntok2",
             "legal_eq", "legal_ov", "a_wjacc", "a_jacc", "a_miss_idf", "a_miss_idf_r",
             "num_jacc", "num_first_eq", "num_conflict", "num_near", "state_eq"]
-           + ["nn_" + c for c in TOKEN_COLS] + ["an_" + c for c in TOKEN_COLS] + NUM_COLS)
+           + ["nn_" + c for c in TOKEN_COLS] + ["an_" + c for c in TOKEN_COLS] + NUM_COLS + SHIFT_COLS
+           + ["legal_swapped", "legal_added", "legal_dropped", "legal_changed"])
 
 
 def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, ra2, ru2, ct2):
@@ -118,7 +119,16 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, r
             + (-1.0 if (not st1 or not st2) else float(st1 == st2),)
             + token_noise_feats(rn1.split(), rn2.split(), nadd, ndrop, ct1.lower(), fq_n)
             + token_noise_feats(ra1.split(), ra2.split(), aadd, adrop, ct1.lower(), fq_a)
-            + number_feats(tuple(ru1.split()), tuple(ru2.split())))
+            + number_feats(tuple(ru1.split()), tuple(ru2.split()))
+            + number_shift_feats(ru1.split(), ru2.split())
+            + _legal_transition(l1, l2))
+
+
+def _legal_transition(l1, l2):
+    """Distractors swap the legal form (LLC->Corp, Private->Public) 14.8% vs 0.26% of true pairs."""
+    a, b = set(l1.split()), set(l2.split())
+    return (float(bool(a) and bool(b) and not (a & b)), float(bool(b) and not a),
+            float(bool(a) and not b), float(bool(a) and bool(b) and a != b))
 
 
 def _py_chunk(cols):
