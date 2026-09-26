@@ -154,3 +154,18 @@ Findings behind the new flags (dev train candidates, labels from the dictionary/
 - Stage 2 with context on stage-1 probabilities (+0.002 on dev), needs 2-fold OOF over all train S1.
 - S2/S3 within-source duplicate clustering to propagate evidence.
 - Faster inference: fewer trees / higher LR.
+
+## Unseen-country adaptation (dev simulation: India unseen, dictionaries + matcher from US only)
+| setup | India F0.5 |
+|---|---|
+| US-only matcher, US-only noise dictionaries (`--dict-countries US`) | 0.8635 (P 0.949, R 0.793) |
+| + self-training: retrain on US + pseudo-India (p>=0.9 -> 1, <0.1 -> 0) | 0.8656 (+0.0022) |
+| + self-training: continue boosting on pseudo-India | +0.0004 / -0.0012 |
+| + dictionaries learned from pseudo-pairs (3 threshold settings) | -0.0046 / -0.0019 / +0.0064 (unstable) |
+| US-only matcher, dictionaries WITH India labels (oracle) | 0.9376 (+0.074) |
+| India seen (normal training) | ~0.984 |
+
+About 60% of the unseen-country gap is the noise dictionaries, but pseudo-labels recover almost none of it
+(the model's confident pairs are the ones it already understands). Not pursued for France.
+France post-filter (added-word decoy markers france/groupe/holding/participations/developpement on v3.1):
+LB shows 0.970 (v3.1 0.969683); expected effect ~+0.0005, below the displayed precision.

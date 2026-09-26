@@ -128,6 +128,8 @@ def main():
                     help="dirs whose files are copied into --work first (outputs of other jobs)")
     ap.add_argument("--countries", default="", help="predict only these S1 countries (comma list); other rows are "
                     "left empty - combine the per-country outputs with scripts/combine_by_country.py")
+    ap.add_argument("--dict-countries", default="", help="learn noise dictionaries only from these S1 countries "
+                    "(simulates an unseen country; experiments only)")
     ap.add_argument("--retrain", action="store_true",
                     help="with --extra-work: reuse imported caches and candidates but NOT an imported model "
                          "(retrain the matcher with the current code; valid only if normalization/blocking are unchanged)")
@@ -225,6 +227,9 @@ def main():
         # ---- noise-model dictionaries from group D (not used for model fitting)
         hc = h[c.s1_idx.values]
         d = hc >= D_START
+        if a.dict_countries:              # simulation of an unseen country: dictionaries from these countries only
+            dc = {x.strip().lower() for x in a.dict_countries.split(",")}
+            d &= np.isin(np.char.lower(np.asarray(s1.country.values, dtype=str))[c.s1_idx.values], list(dc))
         dsel = np.flatnonzero(d)
         if len(dsel) > a.d_max_pairs:   # plenty for token statistics; bounds time and memory
             dsel = np.sort(np.random.default_rng(0).choice(dsel, a.d_max_pairs, replace=False))
