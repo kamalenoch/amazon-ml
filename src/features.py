@@ -15,6 +15,7 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 from rapidfuzz.process import cpdist
 
+from .normalize import phon, LEGAL as _LEGAL
 from .noise import token_noise_feats, number_feats, number_diff_feats, edit_feats, number_sign_feats, TOKEN_COLS, NUM_COLS, NUMD_COLS, EDIT_COLS, NUMS_COLS
 
 _G = {}
@@ -100,8 +101,12 @@ PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_
 
 EXTRA_COLS = {"numdiff": NUMD_COLS, "skel": ["ns_" + c for c in TOKEN_COLS],
               "edits": ["ce_" + c for c in EDIT_COLS] + ["cea_" + c for c in EDIT_COLS],
-              "numsign": NUMS_COLS}
-EXTRA_ORDER = ("numdiff", "skel", "edits", "numsign")
+              "numsign": NUMS_COLS, "phon": ["ph_jacc", "ph_cov", "ph_full"]}
+EXTRA_ORDER = ("numdiff", "skel", "edits", "numsign", "phon")
+
+
+def _phon_set(tokens):
+    return {phon(t) for t in tokens if len(t) >= 2 and t.isalpha() and t not in _LEGAL} - {""}
 
 
 def extra_cols(extras):
@@ -140,6 +145,13 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, r
         row += edit_feats(rn1.split(), rn2.split(), en) + edit_feats(ra1.split(), ra2.split(), ea)
     if "numsign" in ex:       # signed house-number delta + learned log-odds of the exact delta
         row += number_sign_feats(u1, u2, ct1.lower(), _G["numsign"])
+    if "phon" in ex:          # name overlap on sound keys: English vs native-script romanization
+        p1, p2 = _phon_set(rn1.split()), _phon_set(rn2.split())
+        if p1 and p2:
+            inter = len(p1 & p2)
+            row += (inter / len(p1 | p2), inter / len(p1), float(p1 == p2))
+        else:
+            row += (-1.0, -1.0, -1.0)
     return row
 
 

@@ -223,3 +223,26 @@ def norm_addr(s: str):
             continue
         alpha.append(collapse(t))
     return " ".join(alpha), alpha, nums, state
+
+
+
+# ------------------------------------------------------------------ sound key (TRANSLIT-02)
+_PH_SUB = [("tion", "sn"), ("sion", "sn"), ("ph", "f"), ("gh", ""), ("ck", "k"), ("ch", "k"), ("sh", "s"), ("zh", "s"),
+           ("th", "t"), ("dh", "d"), ("bh", "b"), ("kh", "k"), ("wh", "v"), ("w", "v"), ("q", "k"), ("x", "ks"), ("z", "s")]
+_PH_C = re.compile(r"c(?=[eiy])")
+_PH_G = re.compile(r"g(?=[eiy])")
+_PH_V = re.compile(r"[aeiouy]")
+_PH_D = re.compile(r"(.)\1+")
+
+
+def phon(t):
+    """Consonant sound key shared by an English spelling and its phonetic romanization from an Indic script
+    ('technologies'/'teknolajis' -> tknljs, 'international'/'intaraneshanal' -> ntrnsnl, 'foundation'/'phaundeshan'
+    -> fndsn). The consonant skeleton misses these (ch/k, ph/f, ti/sh, soft g/j, w/v)."""
+    if not t.isalpha():
+        return t
+    t = _PH_G.sub("j", _PH_C.sub("s", t))
+    for a, b in _PH_SUB:
+        t = t.replace(a, b)
+    t = _PH_V.sub("", t.replace("c", "k").replace("h", ""))
+    return _PH_D.sub(r"\1", t)

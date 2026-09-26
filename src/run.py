@@ -46,6 +46,16 @@ def rss_gb():
     return -1.0
 
 
+def trim():
+    """Return freed heap to the OS (glibc): after deleting the 88M-row candidate frame the RSS otherwise stays up."""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except OSError:
+        pass
+
+
 def log(*a):
     print(f"[{time.time() - T0:7.0f}s | {rss_gb():5.1f}GB]", *a, flush=True)
 
@@ -112,6 +122,7 @@ def main():
     ap.add_argument("--numdiff", action="store_true", help="house-number difference structure features (ERR-01)")
     ap.add_argument("--skelnoise", action="store_true", help="noise model on phonetic-skeleton tokens (cross-script)")
     ap.add_argument("--edits", action="store_true", help="one-letter edit class log-odds: typo vs distractor edit")
+    ap.add_argument("--phon", action="store_true", help="sound-key name keys + features (native-script India names)")
     ap.add_argument("--numsign", action="store_true", help="signed house-number delta + log-odds of the exact delta")
     ap.add_argument("--morph", action="store_true", help="with --edits: 2-3 letter suffix/prefix appends as edit classes")
     ap.add_argument("--k-prior", type=int, default=0, help="reserved wide slots per S1 for empty-address (by name) "
@@ -139,6 +150,9 @@ def main():
     if a.extra_keys:
         import src.blocking as _blk
         _blk.MORE_KEYS = True
+    if a.phon:
+        import src.blocking as _blk
+        _blk.PHON_KEYS = True
     if a.edits_ctx:
         import src.noise as _nz
         _nz.EDIT_CTX = a.edits = True
@@ -268,7 +282,7 @@ def main():
         fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
         tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop, *fq)
         extras = tuple(e for e, on in (("numdiff", a.numdiff), ("skel", a.skelnoise), ("edits", a.edits),
-                                        ("numsign", a.numsign)) if on)
+                                        ("numsign", a.numsign), ("phon", a.phon)) if on)
         skel = (sadd, sdrop, frequent_tokens([s1.nsk, pool.nsk])) if a.skelnoise else None
 
         # ---- features for group M (context computed over ALL candidates, materialized for M only)
@@ -283,7 +297,7 @@ def main():
         cm, y = c.iloc[idx].reset_index(drop=True), y_all[idx]
         ntr = int((~va_all[idx]).sum())
         del y_all, c, hc, va_all, m
-        gc.collect()
+        trim()
         log(f"features on {len(cm):,} model pairs")
         # one preallocated training matrix: the cheap block is copied in and freed, the string features are
         # written straight into their columns (2x model rows x 120+ features would otherwise peak ~8 GB higher)
@@ -292,9 +306,10 @@ def main():
         X = np.empty((len(cm), len(F)), np.float32)
         X[:, len(scols):] = cheap.values
         del cheap
-        gc.collect()
-        string_features(cm, s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=edits_t, numsign=numsign_t,
-                        out=X[:, :len(scols)])
+        trim()
+        log(f"training matrix allocated {X.shape[0]:,} x {X.shape[1]} ({X.nbytes / 1e9:.1f} GB)")
+        string_features(cm, s1, pool, tables, a.jobs, chunk=250_000, extras=extras, skel=skel, edits=edits_t,
+                        numsign=numsign_t, out=X[:, :len(scols)])
         gc.collect()
         log(f"feature matrix {X.shape[0]:,} x {X.shape[1]} ({X.nbytes / 1e9:.1f} GB)")
         if a.dump_xy:
@@ -304,7 +319,7 @@ def main():
             json.dump(dict(F=F, ntr=int(ntr)), open(W("xy_meta.json"), "w"))
         ids, pids = s1.entity_id.values, pool.entity_id.values
         del s1, pool
-        gc.collect()
+        trim()
         log(f"fit lgb: train {ntr:,}  holdout {len(cm) - ntr:,}  pos rate {y.mean():.3f}  feats {len(F)}")
         model = train_lgb(X[:ntr], y[:ntr], rounds=a.rounds, valid=(X[ntr:], y[ntr:]),
                           params=dict(learning_rate=a.lr), feature_name=F)

@@ -13,7 +13,7 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 
-from .normalize import skeleton
+from .normalize import skeleton, phon
 
 STREET_TYPES = {"st", "ave", "rd", "dr", "ln", "cir", "ct", "blvd", "pl", "pkwy", "hwy", "ter", "trl",
                 "sq", "cv", "way", "loop", "n", "s", "e", "w", "ne", "nw", "se", "sw", "ste", "apt", "flr",
@@ -24,6 +24,7 @@ MAX_PAIR_TOKS = 6
 
 MAX_CROSS_NAME, MAX_CROSS_ADDR, MAX_ADDR_PAIR = 4, 6, 6
 EXTRA_KEYS = True
+PHON_KEYS = False          # --phon: full sound-keyed name (alone, x address word, x house number)
 MORE_KEYS = False          # --extra-keys: joined-name suffix + name-pair x house number (set before KeyIndex)
 SINGLE_KINDS = set("trpjaz")
 
@@ -48,6 +49,10 @@ def record_keys(country, n_clean, a_clean, nums):
         nk.add(f"j{c}|{joined[:8]}")
         if MORE_KEYS:                          # survives injected leading tokens ('@paramounttrading', '>> sion...')
             nk.add(f"z{c}|{joined[-8:]}")
+    if PHON_KEYS and len(ntoks) >= 2:
+        ph = sorted({p for p in (phon(t) for t in ntoks) if len(p) >= 2})[:5]
+        if len(ph) >= 2:
+            nk.add(f"v{c}|{'_'.join(ph)}")
     sk = list(dict.fromkeys(sk))[:MAX_PAIR_TOKS]
     if EXTRA_KEYS:
         # typo-tolerant name keys: pairs of 4-char prefixes ('consulatscy' ~ 'consultancy')
@@ -90,6 +95,12 @@ def record_keys(country, n_clean, a_clean, nums):
                     a, b = (npair[i], npair[j]) if npair[i] < npair[j] else (npair[j], npair[i])
                     for n in nl:
                         xk.add(f"y{c}|{a}|{b}|{n}")
+        if PHON_KEYS:                          # common India names in any script, made specific by the address
+            ph = sorted({p for p in (phon(t) for t in ntoks) if len(p) >= 2})[:5]
+            if ph:
+                fn = "_".join(ph)
+                for s_ in ask[:MAX_CROSS_ADDR] + nl[:1]:
+                    xk.add(f"w{c}|{fn}|{s_}")
         if EXTRA_KEYS:
             nu = list(dict.fromkeys(nums.split()))[:4]
             for i in range(len(nu)):          # number pairs: '5534 10480' survives a replaced name
