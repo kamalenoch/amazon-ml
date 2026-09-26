@@ -141,6 +141,9 @@ def main():
                     "left empty - combine the per-country outputs with scripts/combine_by_country.py")
     ap.add_argument("--dict-countries", default="", help="learn noise dictionaries only from these S1 countries "
                     "(simulates an unseen country; experiments only)")
+    ap.add_argument("--fr-bundle", action="store_true", help="unseen-country normalization bundle (src/france.py) on "
+                    "the test rows of --fix-countries: learned admin components, extra legal forms, own-country token")
+    ap.add_argument("--fix-countries", default="France")
     ap.add_argument("--retrain", action="store_true",
                     help="with --extra-work: reuse imported caches and candidates but NOT an imported model "
                          "(retrain the matcher with the current code; valid only if normalization/blocking are unchanged)")
@@ -162,6 +165,8 @@ def main():
     import shutil
     stale = {"model.pkl", "holdout_preds.parquet", "train_report.json"} if a.retrain else set()
     stale |= {"test_scores.parquet"}             # a job's own output: never imported (would be written through a link)
+    if a.fr_bundle:
+        stale |= {"test_cands.parquet"}          # candidates change with the re-normalized rows
     for d in a.extra_work:
         for f in os.listdir(d):
             if f in stale:
@@ -378,10 +383,16 @@ def main():
     # ================================================================ TEST
     s1, pool = load_split(a.data, "test", a.work, a.jobs)
     log("test loaded", len(s1), len(pool), s1.country.value_counts().to_dict())
+    if a.fr_bundle:
+        from .france import apply_bundle
+        apply_bundle(a.data, "test", s1, pool, [x.strip() for x in a.fix_countries.split(",") if x.strip()], a.jobs, log)
+    only_c = {x.strip().lower() for x in a.countries.split(",") if x.strip()}
     if not os.path.exists(W("test_cands.parquet")):
         pr = lgb.Booster(model_file=W("prerank.txt"))
         ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
-        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), prior=with_prior(s1, pool), **wide)
+        sub = np.isin(np.char.lower(np.asarray(s1.country.values, dtype=str)), list(only_c)) if only_c else None
+        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), prior=with_prior(s1, pool),
+                                s1_subset=sub, **wide)
         del ix
         gc.collect()
         c.to_parquet(W("test_cands.parquet"))
