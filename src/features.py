@@ -91,15 +91,15 @@ def _num_old(n1, n2):
     return inter / len(sa | sb), float(a[0] == b[0]), float(inter == 0), near
 
 
-PY_SRC = ["nsk", "ask", "legal", "nums", "state", "rn", "ra", "ru"]
+PY_SRC = ["nsk", "ask", "legal", "nums", "state", "rn", "ra", "ru", "country"]
 PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_ntok1", "n_ntok2",
             "legal_eq", "legal_ov", "a_wjacc", "a_jacc", "a_miss_idf", "a_miss_idf_r",
             "num_jacc", "num_first_eq", "num_conflict", "num_near", "state_eq"]
            + ["nn_" + c for c in TOKEN_COLS] + ["an_" + c for c in TOKEN_COLS] + NUM_COLS)
 
 
-def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, k2, a2, l2, u2, st2, rn2, ra2, ru2):
-    idf_n, dn, idf_a, da, nadd, ndrop, aadd, adrop = _G["t"]
+def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, ra2, ru2, ct2):
+    idf_n, dn, idf_a, da, nadd, ndrop, aadd, adrop, fq_n, fq_a = _G["t"]
     t1, t2 = k1.split(), k2.split()
     s1, s2 = set(t1), set(t2)
     wj, jac, miss = _wjacc(s1, s2, idf_n, dn)
@@ -116,8 +116,8 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, k2, a2, l2, u2, st2, rn2, ra2, r
              awj, ajac, amiss, amiss_r)
             + _num_old(u1, u2)
             + (-1.0 if (not st1 or not st2) else float(st1 == st2),)
-            + token_noise_feats(rn1.split(), rn2.split(), nadd, ndrop)
-            + token_noise_feats(ra1.split(), ra2.split(), aadd, adrop)
+            + token_noise_feats(rn1.split(), rn2.split(), nadd, ndrop, ct1.lower(), fq_n)
+            + token_noise_feats(ra1.split(), ra2.split(), aadd, adrop, ct1.lower(), fq_a)
             + number_feats(tuple(ru1.split()), tuple(ru2.split())))
 
 
@@ -130,7 +130,8 @@ def _init(tables):
 
 
 def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000):
-    """tables = (idf_n, dn, idf_a, da, name_add_lo, name_drop_lo, addr_add_lo, addr_drop_lo).
+    """tables = (idf_n, dn, idf_a, da, name_add_lo, name_drop_lo, addr_add_lo, addr_drop_lo,
+                  frequent_name_tokens, frequent_addr_tokens).
     Returns a float32 DataFrame (one preallocated block, no intermediate copies)."""
     n_jobs = n_jobs or os.cpu_count()
     ii, jj = cands.s1_idx.values, cands.pool_idx.values

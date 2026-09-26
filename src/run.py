@@ -28,7 +28,7 @@ from .prep import load_split, load_gt
 from .blocking import KeyIndex, generate_candidates
 from .prerank import prerank_features, make_pruner, PR_COLS
 from .features import build_idf, cheap_features, string_features
-from .noise import LogOddsCounter
+from .noise import LogOddsCounter, frequent_tokens
 from .matching import train_lgb, feat_cols, select, f05_macro
 
 T0 = time.time()
@@ -187,8 +187,9 @@ def main():
         di_all, dj_all, dy_all = c.s1_idx.values[dsel], c.pool_idx.values[dsel], y_all[dsel]
         for k in range(0, len(dsel), 2_000_000):     # stream: never more than 2M pairs of strings alive
             di, dj, dy = di_all[k:k + 2_000_000], dj_all[k:k + 2_000_000], dy_all[k:k + 2_000_000]
-            cnt_n.update(s1.rn.array.take(di), pool.rn.array.take(dj), dy)
-            cnt_a.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy)
+            ct = s1.country.array.take(di)
+            cnt_n.update(s1.rn.array.take(di), pool.rn.array.take(dj), dy, ct)
+            cnt_a.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy, ct)
         nadd, ndrop = cnt_n.result()
         aadd, adrop = cnt_a.result()
         del cnt_n, cnt_a, di_all, dj_all, dy_all, dsel, d
@@ -196,7 +197,8 @@ def main():
         log(f"noise dicts from {min(int((hc >= D_START).sum()), a.d_max_pairs):,} D pairs: name add {len(nadd)} drop {len(ndrop)} | addr add {len(aadd)} drop {len(adrop)}")
         idf_n = build_idf([s1.nsk, pool.nsk])
         idf_a = build_idf([s1.ask, pool.ask])
-        tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop)
+        fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
+        tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop, *fq)
 
         # ---- features for group M (context computed over ALL candidates, materialized for M only)
         m = (hc >= M_START) & (hc < M_END)
@@ -274,7 +276,9 @@ def main():
     cheap = cheap_features(c, s1, pool)
     idf_n = build_idf([s1.nsk, pool.nsk])
     idf_a = build_idf([s1.ask, pool.ask])
-    tables = (*idf_n, *idf_a, *M["noise"])
+    fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
+    log(f"frequent tokens (fallback gate): name {len(fq[0]):,} addr {len(fq[1]):,}")
+    tables = (*idf_n, *idf_a, *M["noise"], *fq)
     p = np.zeros(len(c), np.float32)
     ch = cheap.values
     cheap_cols = list(cheap.columns)

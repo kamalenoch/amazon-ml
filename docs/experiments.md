@@ -49,6 +49,21 @@ The generator is learnable:
 - Engineering fixes on the way: OOM at 77M pairs (noise dicts as Python objects, parquet load),
   fixed with Arrow-native loading, streamed dictionaries, preallocated matrices.
 
+## v2 -> v3: France (analysis on test outputs, no labels)
+- France pool = 1.43M records for 259k S1 (5.5 per S1 vs 4.7 in train) -> ~37.5% distractors vs 26% in train.
+- v2 predicted 3.43 matches / French S1 (US 3.35, India 3.22) -> implied French precision ~0.95 vs 0.997.
+- French distractor markers: holding / distribution / international (~34k each, almost never matched -> model
+  rejects: same spelling as English markers in the dictionary) but groupe (20.7k predicted pairs),
+  developpement (13.3k), participations (9.2k) were ADDED tokens in predicted matches: dictionary keyed on exact
+  tokens, 'group' = -8.9 and 'development' = -5.6 but 'groupe'/'developpement' unknown.
+- In train, every added real word not in the S1 name has ~0 true pairs (frank 0/216, clinic 0/19088, group 0/63740):
+  true noise only adds alias markers, legal suffixes, 'com', letters, typos.
+- Fix (language-agnostic): unknown tokens fall back to (a) the record's own country name class (India 'india' = -8.71),
+  (b) pooled legal-form class (-1.58), (c) phonetic stem (singular + consonant skeleton: groupe/group -> jrp),
+  gated to corpus-frequent tokens (df >= 50) so random typos never inherit a stem's statistics.
+- Rejected variant: stem-variant cancellation (+ ungated fallback): dev holdout 0.9809 -> 0.9796.
+- Gated version: dev holdout 0.9815 (baseline 0.9809); flags 43.9k French predicted pairs (4.9%) vs 1.2k.
+
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.
   -> run the France diagnostic (`notebooks/diagnostic_france.py`).

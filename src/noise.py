@@ -13,6 +13,51 @@ from collections import Counter
 import numpy as np
 from unidecode import unidecode
 
+from .normalize import skeleton, collapse, LEGAL
+
+SK = "\u00a7"   # prefix for phonetic-stem keys inside the log-odds dicts
+
+
+from functools import lru_cache
+
+
+@lru_cache(maxsize=2_000_000)
+def stem_key(t: str):
+    """Language-agnostic stem: singularize + consonant skeleton ('groupe'/'group' -> 'jrp',
+    'developpement'/'development' -> 'dblpmnt'). None when too short to be distinctive."""
+    if len(t) > 4 and t.endswith("s"):
+        t = t[:-1]
+    k = skeleton(collapse(t))
+    return k if len(k) >= 3 else None
+
+
+LEGAL_KEY, COUNTRY_KEY = SK + "LEGAL", SK + "COUNTRY"
+
+
+def _special_key(t, country):
+    if country and t == country:
+        return COUNTRY_KEY
+    if t in LEGAL and LEGAL[t]:
+        return LEGAL_KEY
+    return None
+
+
+def lookup(lo, t, country="", freq=None):
+    """exact token -> [only for corpus-frequent tokens] special class (own country name / legal form)
+    -> phonetic stem -> 0. Frequency gate: distractor markers come from a vocabulary (frequent),
+    typos are random (rare) and must not inherit a stem's statistics."""
+    v = lo.get(t)
+    if v is not None:
+        return v
+    if freq is None or t not in freq:
+        return 0.0
+    sp = _special_key(t, country)
+    if sp:
+        return lo.get(sp, 0.0)
+    k = stem_key(t)
+    return lo.get(SK + k, 0.0) if k else 0.0
+
+
 _TOK = re.compile(r"[a-z0-9]+")
 _NUM = re.compile(r"[0-9#]+")
 
@@ -39,24 +84,43 @@ class LogOddsCounter:
         self.add_p, self.add_n, self.drop_p, self.drop_n = Counter(), Counter(), Counter(), Counter()
         self.npos = self.nneg = 0
 
-    def update(self, pairs_a, pairs_b, y):
-        for a, b, t in zip(pairs_a, pairs_b, y):
+    def update(self, pairs_a, pairs_b, y, countries=None):
+        countries = countries if countries is not None else [""] * len(y)
+        for a, b, t, ct in zip(pairs_a, pairs_b, y, countries):
             sa, sb = set(a.split()), set(b.split())
+            add, drop = sb - sa, sa - sb
+            ct = (ct or "").lower()
+            add = list(add) + [k for k in (_special_key(x, ct) for x in add) if k]
+            drop = list(drop) + [k for k in (_special_key(x, ct) for x in drop) if k]
             if t:
                 self.npos += 1
-                self.add_p.update(sb - sa)
-                self.drop_p.update(sa - sb)
+                self.add_p.update(add)
+                self.drop_p.update(drop)
             else:
                 self.nneg += 1
-                self.add_n.update(sb - sa)
-                self.drop_n.update(sa - sb)
+                self.add_n.update(add)
+                self.drop_n.update(drop)
 
     def result(self, min_count=25, prior=1.0):
         npos, nneg = self.npos, self.nneg
 
         def lo(cp, cn):
-            return {k: float(np.log((cp[k] + prior) / (npos + prior)) - np.log((cn[k] + prior) / (nneg + prior)))
-                    for k in set(cp) | set(cn) if cp[k] + cn[k] >= min_count}
+            out = {k: float(np.log((cp[k] + prior) / (npos + prior)) - np.log((cn[k] + prior) / (nneg + prior)))
+                   for k in set(cp) | set(cn) if cp[k] + cn[k] >= min_count}
+            # phonetic-stem aggregate: lets unseen spellings in another language ('groupe') inherit
+            # the statistics of their cognate ('group'); used only when the exact token is unknown
+            sp, sn = Counter(), Counter()
+            for c_, d_ in ((cp, sp), (cn, sn)):
+                for k, v in c_.items():
+                    if k.startswith(SK):
+                        continue
+                    sk = stem_key(k)
+                    if sk:
+                        d_[sk] += v
+            for k in set(sp) | set(sn):
+                if sp[k] + sn[k] >= min_count:
+                    out[SK + k] = float(np.log((sp[k] + prior) / (npos + prior)) - np.log((sn[k] + prior) / (nneg + prior)))
+            return out
 
         return lo(self.add_p, self.add_n), lo(self.drop_p, self.drop_n)
 
@@ -87,12 +151,22 @@ def learn_logodds(pairs_a, pairs_b, y, min_count=25, prior=1.0):
     return lo(add_p, add_n), lo(drop_p, drop_n)
 
 
-def token_noise_feats(a, b, add_lo, drop_lo):
+def token_noise_feats(a, b, add_lo, drop_lo, country="", freq=None):
     sa, sb = set(a), set(b)
-    add = [add_lo.get(t, 0.0) for t in sb - sa]
-    drop = [drop_lo.get(t, 0.0) for t in sa - sb]
+    add_t, drop_t = sb - sa, sa - sb
+    add = [lookup(add_lo, t, country, freq) for t in add_t]
+    drop = [lookup(drop_lo, t, country, freq) for t in drop_t]
     return (min(add, default=0.0), sum(add), max(add, default=0.0), float(sum(v < -2 for v in add)),
-            min(drop, default=0.0), sum(drop), float(len(sb - sa)), float(len(sa - sb)))
+            min(drop, default=0.0), sum(drop), float(len(add_t)), float(len(drop_t)))
+
+
+def frequent_tokens(series_list, min_df=50):
+    c = Counter()
+    for s_ in series_list:
+        for v in s_:
+            if v:
+                c.update(v.split())
+    return frozenset(k for k, n in c.items() if n >= min_df)
 
 
 TOKEN_COLS = ["add_min", "add_sum", "add_max", "add_nbad", "drop_min", "drop_sum", "n_add", "n_drop"]
