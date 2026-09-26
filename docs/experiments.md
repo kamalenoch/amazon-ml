@@ -90,6 +90,11 @@ Learner comparison on the C_keys feature matrix (`--dump-xy`, same rows, thresho
 LightGBM (v3 params) 0.9848, LightGBM 255 leaves lr 0.05 0.9849, 3-seed LightGBM 0.9851, XGBoost depth 10 0.9854,
 LightGBM+XGBoost 0.9853. **All within 0.0006: the features, not the learner, set the score.**
 Expected-F0.5 per-S1 selection on the same probabilities: 0.9845 (-0.0008), confirming the v2 finding.
+Post-hoc selection on fully scored dev candidates (tuned on half the holdout S1, reported on the other half):
+pool-side margin rule -0.0002, soft penalty for a close second S1 +0.0001, per-country thresholds -0.0004.
+Stage 2 with S1-side context of stage-1 p (2-fold OOF): 0.9860 alone, +0.0003 averaged with stage 1. Not kept:
+the pool/S1 competition is already captured by the blocking/pre-ranker margin features.
+Cross-script pool names: 14.8% of true pairs, 16.9% of false merges (miss rate 3.7% vs 2.9%): not a hotspot.
 
 Findings behind the new flags (dev train candidates, labels from the dictionary/model slices only):
 - **One-letter edits** (`--edits`, FORENSICS-02). For names that differ by one token at Damerau distance 1,
