@@ -144,7 +144,8 @@ def main():
         import src.noise as _nz
         _nz.MORPH = a.edits = True
     import shutil
-    stale = {"model.pkl", "holdout_preds.parquet", "train_report.json", "test_scores.parquet"} if a.retrain else set()
+    stale = {"model.pkl", "holdout_preds.parquet", "train_report.json"} if a.retrain else set()
+    stale |= {"test_scores.parquet"}             # a job's own output: never imported (would be written through a link)
     for d in a.extra_work:
         for f in os.listdir(d):
             if f in stale:
@@ -422,6 +423,8 @@ def main():
             log(f"  predicted {done:,}/{len(c):,} ({ct})")
         del ch, cc, rows
         gc.collect()
+    if os.path.islink(W("test_scores.parquet")):
+        os.unlink(W("test_scores.parquet"))
     pd.DataFrame({"s1_idx": c.s1_idx.values, "pool_idx": c.pool_idx.values, "p": p}).to_parquet(W("test_scores.parquet"))
     method = M.get("method", ("threshold", thr))
     if a.threshold is not None:
