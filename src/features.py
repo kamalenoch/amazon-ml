@@ -15,7 +15,7 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 from rapidfuzz.process import cpdist
 
-from .noise import token_noise_feats, number_feats, TOKEN_COLS, NUM_COLS
+from .noise import token_noise_feats, number_feats, number_diff_feats, TOKEN_COLS, NUM_COLS, NUMD_COLS
 
 _G = {}
 
@@ -98,6 +98,14 @@ PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_
            + ["nn_" + c for c in TOKEN_COLS] + ["an_" + c for c in TOKEN_COLS] + NUM_COLS)
 
 
+EXTRA_COLS = {"numdiff": NUMD_COLS, "skel": ["ns_" + c for c in TOKEN_COLS]}
+EXTRA_ORDER = ("numdiff", "skel")
+
+
+def extra_cols(extras):
+    return [c for e in EXTRA_ORDER if e in extras for c in EXTRA_COLS[e]]
+
+
 def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, ra2, ru2, ct2):
     idf_n, dn, idf_a, da, nadd, ndrop, aadd, adrop, fq_n, fq_a = _G["t"]
     t1, t2 = k1.split(), k2.split()
@@ -110,7 +118,7 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, r
         _, _, amiss_r = _wjacc(x2, x1, idf_a, da)
     else:
         awj = ajac = amiss = amiss_r = -1.0
-    return ((wj, jac, miss, miss_r, float(t1[:1] == t2[:1]), float(len(t1)), float(len(t2)),
+    row = ((wj, jac, miss, miss_r, float(t1[:1] == t2[:1]), float(len(t1)), float(len(t2)),
              -1.0 if (not l1 or not l2) else float(l1 == l2),
              -1.0 if (not l1 or not l2) else float(bool(set(l1.split()) & set(l2.split()))),
              awj, ajac, amiss, amiss_r)
@@ -119,17 +127,26 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, r
             + token_noise_feats(rn1.split(), rn2.split(), nadd, ndrop, ct1.lower(), fq_n)
             + token_noise_feats(ra1.split(), ra2.split(), aadd, adrop, ct1.lower(), fq_a)
             + number_feats(tuple(ru1.split()), tuple(ru2.split())))
+    ex = _G.get("extras", ())
+    if "numdiff" in ex:
+        row += number_diff_feats(u1, u2)
+    if "skel" in ex:          # script-independent noise model: add/drop on phonetic-skeleton tokens
+        sadd, sdrop, fq_s = _G["skel"]
+        row += token_noise_feats(t1, t2, sadd, sdrop, ct1.lower(), fq_s)
+    return row
 
 
 def _py_chunk(cols):
     return np.array([_py_row(*r) for r in zip(*cols)], dtype=np.float32)
 
 
-def _init(tables):
+def _init(tables, extras=(), skel=None):
     _G["t"] = tables
+    _G["extras"] = tuple(extras)
+    _G["skel"] = skel
 
 
-def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000):
+def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000, extras=(), skel=None):
     """tables = (idf_n, dn, idf_a, da, name_add_lo, name_drop_lo, addr_add_lo, addr_drop_lo,
                   frequent_name_tokens, frequent_addr_tokens).
     Returns a float32 DataFrame (one preallocated block, no intermediate copies)."""
@@ -138,10 +155,10 @@ def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=1
     need = sorted({c for _, c, _, _ in CPD} | set(PY_SRC))
     S1 = {c: s1[c].array for c in need}
     PL = {c: pool[c].array for c in need}
-    cols = [c for c, *_ in CPD] + PY_COLS
+    cols = [c for c, *_ in CPD] + PY_COLS + extra_cols(extras)
     out = np.empty((len(ii), len(cols)), np.float32)
     ncpd = len(CPD)
-    with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables,)) as pp:
+    with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables, extras, skel)) as pp:
         for k in range(0, len(ii), chunk):
             i, j = ii[k:k + chunk], jj[k:k + chunk]
             A = {c: np.asarray(S1[c].take(i), dtype=object) for c in need}
@@ -201,10 +218,37 @@ def context_features(c, score_col, prefix):
     return pd.DataFrame(out, columns=[f"{prefix}_{k}" for k in CTX], index=c.index)
 
 
-BASE_CHEAP = ["bs_name", "bs_addr", "bs_cross", "bs_nkeys", "bs_nnk", "bs_nak", "bs_nxk", "pr_score", "pr_rank"]
+BASE_CHEAP = ["bs_name", "bs_addr", "bs_cross", "bs_nkeys", "bs_nnk", "bs_nak", "bs_nxk", "pr_score", "pr_rank",
+              "bs_cos", "bs_ncos", "bs_acos"]
 
 
-def cheap_features(c, s1, pool, rows=None):
+PF_BITS = ["allcaps", "lower", "leadjunk", "bracket", "dblspace", "domain", "nonascii", "digit", "alias", "idtag"]
+PA_BITS = ["empty", "allcaps", "masked", "nulltok", "dblspace", "zeropad", "landmark"]
+FMT_FEATS = ["pf_" + b for b in PF_BITS] + ["pa_" + b for b in PA_BITS] + ["fmt_noise", "raw_name_eq", "raw_addr_eq"]
+
+
+def fmt_features(c, s1, pool, rows=None):
+    """Raw-format fingerprints of the pool record + raw-string equality with the S1 record."""
+    si, pj = c.s1_idx.values, c.pool_idx.values
+    if rows is not None:
+        si, pj = si[rows], pj[rows]
+    fn = np.asarray(pool.fn.values)[pj].astype(np.int32)
+    fa = np.asarray(pool.fa.values)[pj].astype(np.int32)
+    out = np.empty((len(si), len(FMT_FEATS)), np.float32)
+    for b in range(len(PF_BITS)):
+        out[:, b] = (fn >> b) & 1
+    for b in range(len(PA_BITS)):
+        out[:, len(PF_BITS) + b] = (fa >> b) & 1
+    k = len(PF_BITS) + len(PA_BITS)
+    noisy_n = sum(((fn >> b) & 1) for b in (0, 1, 2, 3, 4, 5, 6, 9))
+    noisy_a = sum(((fa >> b) & 1) for b in (1, 2, 3, 4, 5))
+    out[:, k] = noisy_n + noisy_a
+    out[:, k + 1] = np.asarray(s1.hn.values)[si] == np.asarray(pool.hn.values)[pj]
+    out[:, k + 2] = np.asarray(s1.ha.values)[si] == np.asarray(pool.ha.values)[pj]
+    return out
+
+
+def cheap_features(c, s1, pool, rows=None, fmt=False):
     """Features that need the FULL candidate set (competition context), materialized only for `rows`
     (bool mask or index array; None = all). One preallocated float32 block, no DataFrame copies:
     at 77M candidate pairs this is the difference between ~5 GB and an OOM kill."""
@@ -215,7 +259,8 @@ def cheap_features(c, s1, pool, rows=None):
     base = [b for b in BASE_CHEAP if b in c]
     has_pr = "pr_score" in c
     cols = (["src", "n_cands_s1", "n_cands_pool", "a1_empty", "a2_empty"] + base + ["bs_total"]
-            + [f"bst_{k}" for k in CTX] + ([f"prs_{k}" for k in CTX] if has_pr else []))
+            + [f"bst_{k}" for k in CTX] + ([f"prs_{k}" for k in CTX] if has_pr else [])
+            + (FMT_FEATS if fmt else []))
     out = np.empty((n, len(cols)), np.float32)
     g1, g2 = c.s1_idx.values, c.pool_idx.values
     si, pj = sel(g1), sel(g2)
@@ -236,4 +281,7 @@ def cheap_features(c, s1, pool, rows=None):
     k += len(CTX)
     if has_pr:
         _context_into(out, k, g1, g2, c.pr_score.values.astype(np.float32), rows)
+        k += len(CTX)
+    if fmt:
+        out[:, k:k + len(FMT_FEATS)] = fmt_features(c, s1, pool, rows)
     return pd.DataFrame(out, columns=cols, copy=False)

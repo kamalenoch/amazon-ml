@@ -5,7 +5,7 @@ abbreviation folding), never keyed on a fixed country list, so unseen countries
 (France in test) go through the same path.
 """
 import re
-from unidecode import unidecode
+from .translit import to_ascii as _romanize
 
 # ----------------------------------------------------------------------------- tokens
 LEGAL = {
@@ -67,7 +67,7 @@ _IN_STATES = {
     "mh": "maharashtra", "dl": "delhi", "up": "uttar pradesh", "ka": "karnataka", "tn": "tamil nadu",
     "gj": "gujarat", "wb": "west bengal", "tg": "telangana", "ts": "telangana", "hr": "haryana",
     "kl": "kerala", "rj": "rajasthan", "br": "bihar", "mp": "madhya pradesh", "ap": "andhra pradesh",
-    "od": "orissa", "or": "odisha", "pb": "punjab", "jh": "jharkhand", "ch": "chandigarh",
+    "od": "odisha", "or": "orissa", "pb": "punjab", "jh": "jharkhand", "ch": "chandigarh",
     "ga": "goa", "as": "assam", "uk": "uttarakhand", "hp": "himachal pradesh", "jk": "jammu and kashmir",
     "ct": "chhattisgarh", "cg": "chhattisgarh", "py": "puducherry",
 }
@@ -86,7 +86,7 @@ def to_ascii(s: str) -> str:
     if not s:
         return ""
     if not s.isascii():
-        s = unidecode(s.replace("\u00b0", " "))
+        s = _romanize(s)
     return s.lower()
 
 
@@ -134,9 +134,17 @@ def _fix_ocr(tok: str) -> str:
     return tok
 
 
-_STATE_SKEL = {}
+_STATE_FULL = {}   # exact full name -> code
+_STATE_SKEL = {}   # skeleton -> code, only for skeletons that are unambiguous and >= 2 chars
+_skel_codes = {}
 for _code, _name in list(_STATES.items()) + list(_IN_STATES.items()):
-    _STATE_SKEL.setdefault(skeleton(_name.replace(" ", "")), _code)
+    _code = "od" if _name == "orissa" else _code          # orissa/odisha are one state
+    _STATE_FULL.setdefault(_name.replace(" ", ""), _code)
+    _skel_codes.setdefault(skeleton(_name.replace(" ", "")), set()).add(_code)
+for _sk, _codes in _skel_codes.items():
+    # '' (hawaii/iowa/ohio), 'd', 't', 'j' match arbitrary words; 'rjn' is arizona AND oregon
+    if len(_sk) >= 2 and len(_codes) == 1:
+        _STATE_SKEL[_sk] = next(iter(_codes))
 
 
 def state_of(part: str):
@@ -144,6 +152,8 @@ def state_of(part: str):
     p = part.replace(" ", "")
     if len(p) == 2 and p.isalpha():
         return p if (p in _STATES or p in _IN_STATES) else None
+    if p in _STATE_FULL:
+        return _STATE_FULL[p]
     return _STATE_SKEL.get(skeleton(p)) if len(p) >= 4 else None
 
 

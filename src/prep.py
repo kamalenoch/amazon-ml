@@ -1,5 +1,7 @@
 """Load the three sources, normalize in parallel, cache as parquet."""
 import os
+import re
+import zlib
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
@@ -8,6 +10,7 @@ from .normalize import norm_name, norm_addr, skeleton
 from .noise import raw_tokens, raw_numbers
 
 NORM_COLS = ["n_clean", "legal", "a_clean", "nums", "state", "nsk", "ask", "rn", "ra", "ru"]
+FMT_COLS = ["fn", "fa", "hn", "ha"]      # raw-format bitmasks + raw-string hashes (formatting is lost by normalization)
 READ_KW = dict(sep="\t", dtype=str, keep_default_na=False, quoting=3)
 
 
@@ -17,6 +20,26 @@ def read_tsv(path):
     for c in df.columns:
         df[c] = df[c].str.replace("\r", "", regex=False)
     return df
+
+
+_ALIAS = re.compile(r"\b(dba|d/b/a|formerly|aka|a\.k\.a|nee|n\u00e9e|fka|f/k/a|trading as|t/a)\b", re.I)
+_NULL = re.compile(r"\b(null|none|nan|n/a)\b|<null>", re.I)
+_DOMAIN = re.compile(r"\.(com|in|net|org|co|biz|info|fr)\b|www\.", re.I)
+_LANDMARK = re.compile(r"\b(near|opp|opposite|behind|beside)\b", re.I)
+_IDTAG = re.compile(r"\bid\s*:?\s*\d", re.I)
+_LEADJUNK = re.compile(r"^\W")
+_ZEROPAD = re.compile(r"\b0\d")
+
+
+def fmt_record(n, a):
+    """Raw-format fingerprints. True copies carry more formatting noise (case changes, junk prefixes, domain
+    style, scripts) than distractors, which are clean text with a semantic edit (FORENSICS-01)."""
+    fn = (int(n.isupper()) | int(n.islower()) << 1 | int(bool(_LEADJUNK.match(n))) << 2 | int("(" in n or "[" in n) << 3
+          | int("  " in n) << 4 | int(bool(_DOMAIN.search(n))) << 5 | int(not n.isascii()) << 6
+          | int(any(ch.isdigit() for ch in n)) << 7 | int(bool(_ALIAS.search(n))) << 8 | int(bool(_IDTAG.search(n))) << 9)
+    fa = (int(not a.strip()) | int(a.isupper()) << 1 | int("#" in a) << 2 | int(bool(_NULL.search(a))) << 3
+          | int("  " in a) << 4 | int(bool(_ZEROPAD.search(a))) << 5 | int(bool(_LANDMARK.search(a))) << 6)
+    return fn, fa, zlib.crc32(" ".join(n.lower().split()).encode()), zlib.crc32(" ".join(a.lower().split()).encode())
 
 
 def _norm_chunk(args):
@@ -29,7 +52,8 @@ def _norm_chunk(args):
                     " ".join(skeleton(t) for t in nc.split()),          # name skeleton tokens
                     " ".join(skeleton(t) if t.isalpha() else t for t in ac.split()),  # addr skeleton tokens
                     " ".join(raw_tokens(n)), " ".join(raw_tokens(a)),   # raw tokens (noise model)
-                    " ".join(raw_numbers(a))))                          # raw numbers incl. '#' masks
+                    " ".join(raw_numbers(a)))                           # raw numbers incl. '#' masks
+                   + fmt_record(n or "", a or ""))
     return out
 
 
@@ -43,7 +67,9 @@ def normalize_df(df, n_jobs=None, chunk=50_000):
     else:
         res = [_norm_chunk(p) for p in parts]
     flat = [r for part in res for r in part]
-    out = pd.DataFrame(flat, columns=NORM_COLS, index=df.index)
+    out = pd.DataFrame(flat, columns=NORM_COLS + FMT_COLS, index=df.index)
+    out[FMT_COLS[:2]] = out[FMT_COLS[:2]].astype(np.int16)
+    out[FMT_COLS[2:]] = out[FMT_COLS[2:]].astype(np.int64)
     # raw text is no longer needed downstream; dropping it roughly halves RAM at full scale
     return pd.concat([df.drop(columns=["business_name", "business_address"]), out], axis=1)
 

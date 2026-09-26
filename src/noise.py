@@ -11,7 +11,7 @@ import re
 from collections import Counter
 
 import numpy as np
-from unidecode import unidecode
+from .translit import to_ascii as unidecode   # own romanizer (no GPL)
 
 from .normalize import skeleton, collapse, LEGAL
 
@@ -213,3 +213,30 @@ def number_feats(a, b):
 
 
 NUM_COLS = ["num_rel_best", "num_rel_first", "num_eq_frac", "num_soft_frac", "num_sub_frac", "num_n1", "num_n2"]
+
+
+# ------------------------------------------------------------------ number difference structure (ERR-01)
+NUMD_COLS = ["numd_state", "numd_logabs", "numd_pos", "numd_ndig", "numd_rel"]
+
+
+def number_diff_feats(n1, n2):
+    """First S1 house number vs the closest same-length pool number (normalized digits).
+    Distractors sit next door (small |d|, last digits differ); true copies carry typos in any digit
+    (|d| >= 100 with one wrong digit: P(true) = 0.98 on train). numd_state: 2 equal, 1 same-length diff,
+    0 no same-length number, -1 missing."""
+    a, b = n1.split(), n2.split()
+    if not a or not b:
+        return (-1.0, -1.0, -1.0, -1.0, -1.0)
+    x = a[0]
+    if x in b:
+        return (2.0, 0.0, 0.0, 0.0, 0.0)
+    same = [v for v in b if len(v) == len(x)]
+    if not same or not x.isdigit():
+        return (0.0, -1.0, -1.0, -1.0, -1.0)
+    xi = int(x)
+    v = min(same, key=lambda z: abs(int(z) - xi) if z.isdigit() else 10 ** 12)
+    if not v.isdigit():
+        return (0.0, -1.0, -1.0, -1.0, -1.0)
+    d = abs(int(v) - xi)
+    dp = [i for i, (c1, c2) in enumerate(zip(x, v)) if c1 != c2]
+    return (1.0, float(np.log10(d + 1)), float(len(x) - dp[0]) if dp else 0.0, float(len(dp)), d / max(xi, 1))

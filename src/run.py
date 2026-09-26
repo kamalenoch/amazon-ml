@@ -105,6 +105,13 @@ def main():
     ap.add_argument("--threshold", type=float, default=None)
     ap.add_argument("--predict-chunk", type=int, default=3_000_000)
     ap.add_argument("--jobs", type=int, default=None)
+    ap.add_argument("--fmt", action="store_true", help="add raw-format fingerprint features (FORENSICS-01)")
+    ap.add_argument("--extra-keys", action="store_true", help="joined-name suffix + name-pair x number keys")
+    ap.add_argument("--dump-xy", action="store_true", help="save the model feature matrix (for learner experiments)")
+    ap.add_argument("--numdiff", action="store_true", help="house-number difference structure features (ERR-01)")
+    ap.add_argument("--skelnoise", action="store_true", help="noise model on phonetic-skeleton tokens (cross-script)")
+    ap.add_argument("--cos", type=int, default=0, help="cosine-normalized blocking: keep top-N by cosine in the wide "
+                                                        "set and feed cosine scores to the pre-ranker (0 = off)")
     ap.add_argument("--d-max-pairs", type=int, default=15_000_000, help="max candidate pairs for noise dictionaries")
     ap.add_argument("--stage", default="all", choices=["all", "train", "test-cands", "predict"],
                     help="train: stop after model.pkl | test-cands: pre-ranker + test blocking only | "
@@ -114,6 +121,9 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     os.makedirs(a.out, exist_ok=True)
+    if a.extra_keys:
+        import src.blocking as _blk
+        _blk.MORE_KEYS = True
     import shutil
     for d in a.extra_work:
         for f in os.listdir(d):
@@ -123,7 +133,7 @@ def main():
                 log("imported", f, "from", d)
     W = lambda f: os.path.join(a.work, f)
     kt, kn, ka, kx = map(int, a.wide.split(","))
-    wide = dict(k_total=kt, k_name=kn, k_addr=ka, k_cross=kx)
+    wide = dict(k_total=kt, k_name=kn, k_addr=ka, k_cross=kx, k_cos=a.cos)
     PR_END = int(a.pr_frac * 10_000)
     M_START, M_END = PR_END, PR_END + int(a.m_frac * 10_000)
     D_START = 10_000 - int(a.d_frac * 10_000)
@@ -183,22 +193,27 @@ def main():
         dsel = np.flatnonzero(d)
         if len(dsel) > a.d_max_pairs:   # plenty for token statistics; bounds time and memory
             dsel = np.sort(np.random.default_rng(0).choice(dsel, a.d_max_pairs, replace=False))
-        cnt_n, cnt_a = LogOddsCounter(), LogOddsCounter()
+        cnt_n, cnt_a, cnt_s = LogOddsCounter(), LogOddsCounter(), LogOddsCounter()
         di_all, dj_all, dy_all = c.s1_idx.values[dsel], c.pool_idx.values[dsel], y_all[dsel]
         for k in range(0, len(dsel), 2_000_000):     # stream: never more than 2M pairs of strings alive
             di, dj, dy = di_all[k:k + 2_000_000], dj_all[k:k + 2_000_000], dy_all[k:k + 2_000_000]
             ct = s1.country.array.take(di)
             cnt_n.update(s1.rn.array.take(di), pool.rn.array.take(dj), dy, ct)
             cnt_a.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy, ct)
+            if a.skelnoise:
+                cnt_s.update(s1.nsk.array.take(di), pool.nsk.array.take(dj), dy, ct)
         nadd, ndrop = cnt_n.result()
         aadd, adrop = cnt_a.result()
-        del cnt_n, cnt_a, di_all, dj_all, dy_all, dsel, d
+        sadd, sdrop = cnt_s.result() if a.skelnoise else ({}, {})
+        del cnt_n, cnt_a, cnt_s, di_all, dj_all, dy_all, dsel, d
         gc.collect()
         log(f"noise dicts from {min(int((hc >= D_START).sum()), a.d_max_pairs):,} D pairs: name add {len(nadd)} drop {len(ndrop)} | addr add {len(aadd)} drop {len(adrop)}")
         idf_n = build_idf([s1.nsk, pool.nsk])
         idf_a = build_idf([s1.ask, pool.ask])
         fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
         tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop, *fq)
+        extras = tuple(e for e, on in (("numdiff", a.numdiff), ("skel", a.skelnoise)) if on)
+        skel = (sadd, sdrop, frequent_tokens([s1.nsk, pool.nsk])) if a.skelnoise else None
 
         # ---- features for group M (context computed over ALL candidates, materialized for M only)
         m = (hc >= M_START) & (hc < M_END)
@@ -206,19 +221,24 @@ def main():
         # order M rows as [train..., holdout...] so both are contiguous views (no copies)
         idx = np.flatnonzero(m)
         idx = idx[np.argsort(va_all[idx], kind="stable")]
-        cheap = cheap_features(c, s1, pool, rows=idx)
+        cheap = cheap_features(c, s1, pool, rows=idx, fmt=a.fmt)
         cm, y = c.iloc[idx].reset_index(drop=True), y_all[idx]
         ntr = int((~va_all[idx]).sum())
         del y_all, c, hc, va_all, m
         gc.collect()
         log(f"features on {len(cm):,} model pairs")
-        S = string_features(cm, s1, pool, tables, a.jobs)
+        S = string_features(cm, s1, pool, tables, a.jobs, extras=extras, skel=skel)
         F = list(S.columns) + list(cheap.columns)
         X = np.empty((len(cm), len(F)), np.float32)
         X[:, :S.shape[1]] = S.values
         X[:, S.shape[1]:] = cheap.values
         del S, cheap
         gc.collect()
+        if a.dump_xy:
+            np.save(W("xy_X.npy"), X)
+            np.save(W("xy_y.npy"), y)
+            pd.DataFrame({"s1_idx": cm.s1_idx.values, "pool_idx": cm.pool_idx.values}).to_parquet(W("xy_keys.parquet"))
+            json.dump(dict(F=F, ntr=int(ntr)), open(W("xy_meta.json"), "w"))
         log(f"fit lgb: train {ntr:,}  holdout {len(cm) - ntr:,}  pos rate {y.mean():.3f}  feats {len(F)}")
         model = train_lgb(X[:ntr], y[:ntr], rounds=a.rounds, valid=(X[ntr:], y[ntr:]),
                           params=dict(learning_rate=a.lr), feature_name=F)
@@ -241,7 +261,8 @@ def main():
         log("top features", imp.head(20).round(0).to_dict())
         with open(W("model.pkl"), "wb") as f:
             pickle.dump(dict(model=model, feats=F, thr=float(best[1]), holdout_f05=best[0],
-                             noise=(nadd, ndrop, aadd, adrop)), f)
+                             noise=(nadd, ndrop, aadd, adrop), fmt=a.fmt, extras=extras,
+                             skel_dicts=(sadd, sdrop)), f)
         json.dump(dict(holdout_f05=best[0], threshold=float(best[1]), best_iter=model.best_iteration,
                        features=F, args=vars(a)), open(W("train_report.json"), "w"), indent=1)
         del X, cm, s1, pool
@@ -273,19 +294,21 @@ def main():
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), s1.entity_id.values, c.s1_idx.values,
                 pool.entity_id.array, c.pool_idx.values, "candidate_entity_ids")
     log("wrote candidate_pairs.tsv")
-    cheap = cheap_features(c, s1, pool)
+    cheap = cheap_features(c, s1, pool, fmt=M.get("fmt", False))
     idf_n = build_idf([s1.nsk, pool.nsk])
     idf_a = build_idf([s1.ask, pool.ask])
     fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
     log(f"frequent tokens (fallback gate): name {len(fq[0]):,} addr {len(fq[1]):,}")
     tables = (*idf_n, *idf_a, *M["noise"], *fq)
+    extras = M.get("extras", ())
+    skel = (*M["skel_dicts"], frequent_tokens([s1.nsk, pool.nsk])) if "skel" in extras else None
     p = np.zeros(len(c), np.float32)
     ch = cheap.values
     cheap_cols = list(cheap.columns)
     del cheap
     for k in range(0, len(c), a.predict_chunk):
         sl = slice(k, k + a.predict_chunk)
-        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs)
+        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel)
         X = np.hstack([S.values, ch[sl]])
         assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
         p[sl] = M["model"].predict(X, num_threads=0)

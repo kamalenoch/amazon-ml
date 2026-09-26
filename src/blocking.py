@@ -24,7 +24,8 @@ MAX_PAIR_TOKS = 6
 
 MAX_CROSS_NAME, MAX_CROSS_ADDR, MAX_ADDR_PAIR = 4, 6, 6
 EXTRA_KEYS = True
-SINGLE_KINDS = set("trpja")
+MORE_KEYS = False          # --extra-keys: joined-name suffix + name-pair x house number (set before KeyIndex)
+SINGLE_KINDS = set("trpjaz")
 
 
 def record_keys(country, n_clean, a_clean, nums):
@@ -45,6 +46,8 @@ def record_keys(country, n_clean, a_clean, nums):
     joined = "".join(ntoks)
     if len(joined) >= 8:                       # 'southernexports.com' <-> 'Southern Exports'
         nk.add(f"j{c}|{joined[:8]}")
+        if MORE_KEYS:                          # survives injected leading tokens ('@paramounttrading', '>> sion...')
+            nk.add(f"z{c}|{joined[-8:]}")
     sk = list(dict.fromkeys(sk))[:MAX_PAIR_TOKS]
     if EXTRA_KEYS:
         # typo-tolerant name keys: pairs of 4-char prefixes ('consulatscy' ~ 'consultancy')
@@ -80,6 +83,13 @@ def record_keys(country, n_clean, a_clean, nums):
         for s_ in sk[:MAX_CROSS_NAME]:
             for a in ask[:MAX_CROSS_ADDR] + nl:
                 xk.add(f"x{c}|{s_}|{a}")
+        if MORE_KEYS:                          # common names made specific by the house number
+            npair = sk[:MAX_CROSS_NAME]
+            for i in range(len(npair)):
+                for j in range(i + 1, len(npair)):
+                    a, b = (npair[i], npair[j]) if npair[i] < npair[j] else (npair[j], npair[i])
+                    for n in nl:
+                        xk.add(f"y{c}|{a}|{b}|{n}")
         if EXTRA_KEYS:
             nu = list(dict.fromkeys(nums.split()))[:4]
             for i in range(len(nu)):          # number pairs: '5534 10480' survives a replaced name
@@ -144,7 +154,8 @@ class KeyIndex:
         order = np.argsort(pk)
         pk = pk[order]
         self.pr = pr[order]
-        del order, pf, pr
+        pf = pf[order]
+        del order, pr
         newk = np.empty(len(pk), bool)
         newk[0] = True
         np.not_equal(pk[1:], pk[:-1], out=newk[1:])
@@ -153,12 +164,27 @@ class KeyIndex:
         del pk, newk
         self.counts = np.diff(np.r_[self.starts, len(self.pr)]).astype(np.int64)
         self.idf = np.log((len(pool) + 1) / (self.counts + 1)).astype(np.float32)
+        # per-record idf mass of usable keys per family (name/addr/cross) -> cosine-normalized scores:
+        # summed idf favours verbose records over true matches with short / empty addresses
+        self.pmass = np.zeros((len(pool), 3))
+        for a0 in range(0, len(self.pr), 50_000_000):
+            a1 = min(a0 + 50_000_000, len(self.pr))
+            kr = np.searchsorted(self.starts, np.arange(a0, a1), side="right") - 1
+            f = pf[a0:a1]
+            capr = np.where(f >= 4, cap, cap_composite or cap)
+            w = np.where(self.counts[kr] * df_scale <= capr, self.idf[kr], 0).astype(np.float64)
+            for fam_k in range(3):
+                self.pmass[:, fam_k] += np.bincount(self.pr[a0:a1], weights=w * ((f & 3) == fam_k), minlength=len(pool))
+        self.pmass = self.pmass.astype(np.float32)
+        del pf
         pos = np.searchsorted(uk, sk)
         pos[pos == len(uk)] = 0
         capv = np.where(sf >= 4, cap, cap_composite or cap)
         ok = (uk[pos] == sk) & (self.counts[pos] * df_scale <= capv)
         self.sr, self.sf, self.pos = sr[ok], (sf[ok] & 3).astype(np.int8), pos[ok]
         self.n_s1 = len(s1)
+        self.smass = np.stack([np.bincount(self.sr, weights=self.idf[self.pos].astype(np.float64) * (self.sf == k),
+                                           minlength=len(s1)) for k in range(3)], 1).astype(np.float32)
         del sk, ok, uk
         if verbose:
             print(f"[block] cap={cap} usable s1 keys={len(self.sr):,} "
@@ -166,7 +192,8 @@ class KeyIndex:
 
 
 def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, k_addr=10, k_cross=0,
-                        budget=60_000_000, n_jobs=None, verbose=True, prerank=None, s1_subset=None, index=None):
+                        budget=60_000_000, n_jobs=None, verbose=True, prerank=None, s1_subset=None, index=None,
+                        k_cos=0):
     """Returns DataFrame [s1_idx, pool_idx, bs_*] (row indices into s1/pool).
     index: a prebuilt KeyIndex (reuse across passes). s1_subset: bool mask of S1 rows to process.
     prerank: callable(DataFrame)->DataFrame applied to every chunk's kept pairs (learned pruning)."""
@@ -210,10 +237,21 @@ def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, 
         s_tot = s_name + s_addr + s_cross
         keep = (_group_rank(g, s_tot) < k_total) | (_group_rank(g, s_name) < k_name) | \
                (_group_rank(g, s_addr) < k_addr) | (_group_rank(g, s_cross) < k_cross)
+        extra = {}
+        if k_cos:
+            pidx = (up & ((1 << 24) - 1)).astype(np.int64)
+            ms, mp_ = ix.smass[g], ix.pmass[pidx]
+            cos = s_tot / np.sqrt((ms.sum(1) + 1.0) * (mp_.sum(1) + 1.0))
+            ncos = s_name / np.sqrt((ms[:, 0] + 1.0) * (mp_[:, 0] + 1.0))
+            acos = s_addr / np.sqrt((ms[:, 1] + 1.0) * (mp_[:, 1] + 1.0))
+            keep |= _group_rank(g, cos) < k_cos
+            extra = {"bs_cos": cos[keep].astype(np.float32), "bs_ncos": ncos[keep].astype(np.float32),
+                     "bs_acos": acos[keep].astype(np.float32)}
+            del pidx, ms, mp_, cos, ncos, acos
         blk = pd.DataFrame({"s1_idx": g[keep], "pool_idx": (up[keep] & ((1 << 24) - 1)).astype(np.int32),
                             "bs_name": s_name[keep], "bs_addr": s_addr[keep], "bs_cross": s_cross[keep],
                             "bs_nkeys": nkeys[keep], "bs_nnk": n_nk[keep], "bs_nak": n_ak[keep],
-                            "bs_nxk": n_xk[keep]})
+                            "bs_nxk": n_xk[keep], **extra})
         if prerank is not None:
             blk = prerank(blk)
         out.append(blk)

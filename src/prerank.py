@@ -20,7 +20,15 @@ def prerank_features(b):
         mx = pd.Series(v).groupby(g).transform("max").values
         X["q_" + k] = (v / (mx + 1e-6)).astype(np.float32)
     X["n_s1"] = pd.Series(g).groupby(g).transform("size").values.astype(np.float32)
-    return X[PR_COLS]
+    cols = list(PR_COLS)
+    if "bs_cos" in b:                  # cosine-normalized blocking scores (--cos)
+        for c in ("bs_cos", "bs_ncos", "bs_acos"):
+            v = b[c].values.astype(np.float32)
+            X[c] = v
+            X["r_" + c] = _group_rank(g, v).astype(np.float32)
+            X["q_" + c] = (v / (pd.Series(v).groupby(g).transform("max").values + 1e-6)).astype(np.float32)
+            cols += [c, "r_" + c, "q_" + c]
+    return X[cols]
 
 
 def make_pruner(model, k_keep, p_keep=None):
