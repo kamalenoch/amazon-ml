@@ -240,3 +240,99 @@ def number_diff_feats(n1, n2):
     d = abs(int(v) - xi)
     dp = [i for i, (c1, c2) in enumerate(zip(x, v)) if c1 != c2]
     return (1.0, float(np.log10(d + 1)), float(len(x) - dp[0]) if dp else 0.0, float(len(dp)), d / max(xi, 1))
+
+
+# ------------------------------------------------------------------ one-letter edit fingerprint (FORENSICS-02)
+_VOW = frozenset("aeiou")
+EDIT_COLS = ["n", "min", "sum", "pos_min", "len_min"]
+
+
+def edit_key(x, z):
+    """(op, position, letter class, length) of a one-edit change x -> z (Damerau distance 1), else None.
+    The generator's typos in true copies hit the middle of a word or swap two letters; its distractor
+    edits insert/delete/replace the FIRST or LAST letter, swap vowels, or change 1-3 letter words
+    (dev train: first-letter insert/delete P(true)=0.02, last-letter insert 0.10, middle 0.73-0.81)."""
+    lx, lz = len(x), len(z)
+    if abs(lx - lz) > 1 or x == z or not x.isalpha() or not z.isalpha():
+        return None
+    m = min(lx, lz)
+    i = 0
+    while i < m and x[i] == z[i]:
+        i += 1
+    if lx == lz:
+        if x[i + 1:] == z[i + 1:]:
+            op, a, b = "sub", x[i] in _VOW, z[i] in _VOW
+            ch = "vv" if a and b else ("cc" if not a and not b else "vc")
+            last = lx - 1
+        elif i + 1 < lx and x[i] == z[i + 1] and x[i + 1] == z[i] and x[i + 2:] == z[i + 2:]:
+            op, ch, last = "tr", "", lx - 2
+        else:
+            return None
+    else:
+        long_, short = (z, x) if lz > lx else (x, z)
+        if short[i:] != long_[i + 1:]:
+            return None
+        op, c = ("ins" if lz > lx else "del"), long_[i]
+        ch = "dup" if (i > 0 and long_[i - 1] == c) or (i + 1 < len(long_) and long_[i + 1] == c) else ("v" if c in _VOW else "c")
+        last = lx if op == "ins" else lx - 1
+    pos = "first" if i == 0 else ("last" if i >= last else "mid")
+    return op, pos, ch, min(lx, 7)
+
+
+EDIT_CTX = False           # --edits-ctx: separate statistics when the edit is the ONLY name difference
+
+
+def _edits(a, b):
+    """Edit keys of every (dropped S1 token, added pool token) pair at Damerau distance 1."""
+    sa, sb = set(a), set(b)
+    drop, add = sa - sb, sb - sa
+    if not drop or not add:
+        return []
+    ks = [k for x in drop for z in add if abs(len(x) - len(z)) <= 1 for k in (edit_key(x, z),) if k]
+    if EDIT_CTX:              # a lone one-letter change is the distractor's move; typos come with other noise
+        c = "1" if len(drop) == 1 and len(add) == 1 else "m"
+        ks = [(c + k[0],) + k[1:] for k in ks]
+    return ks
+
+
+def _edit_names(k):
+    op, pos, ch, L = k
+    return (f"{op}|{pos}|{ch}|{L}", f"{op}|{pos}", f"{op}|L{L}", f"{op}|{ch}")
+
+
+class EditCounter:
+    """Log-odds (true vs negative candidate) of one-letter edit classes; learned on the dictionary slice."""
+
+    def __init__(self):
+        self.p, self.n = Counter(), Counter()
+        self.npos = self.nneg = 0
+
+    def update(self, pairs_a, pairs_b, y):
+        for a, b, t in zip(pairs_a, pairs_b, y):
+            keys = {s for k in _edits(a.split(), b.split()) for s in _edit_names(k)}
+            if t:
+                self.npos += 1
+                self.p.update(keys)
+            else:
+                self.nneg += 1
+                self.n.update(keys)
+
+    def result(self, min_count=20, prior=1.0):
+        return {k: float(np.log((self.p[k] + prior) / (self.npos + prior)) - np.log((self.n[k] + prior) / (self.nneg + prior)))
+                for k in set(self.p) | set(self.n) if self.p[k] + self.n[k] >= min_count}
+
+
+def edit_feats(a, b, lo):
+    """Count of one-edit token changes and their log-odds: min/sum over edits of the most specific known
+    class, plus the (op, position) and (op, length) classes alone."""
+    ks = _edits(a, b)
+    if not ks:
+        return (0.0, 0.0, 0.0, 0.0, 0.0)
+    best, pos, ln = [], [], []
+    for k in ks:
+        fine, p_, l_, c_ = _edit_names(k)
+        v = lo.get(fine)
+        best.append(v if v is not None else lo.get(p_, 0.0))
+        pos.append(lo.get(p_, 0.0))
+        ln.append(lo.get(l_, 0.0))
+    return (float(len(ks)), min(best), sum(best), min(pos), min(ln))

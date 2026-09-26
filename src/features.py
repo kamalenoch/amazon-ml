@@ -15,7 +15,7 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 from rapidfuzz.process import cpdist
 
-from .noise import token_noise_feats, number_feats, number_diff_feats, TOKEN_COLS, NUM_COLS, NUMD_COLS
+from .noise import token_noise_feats, number_feats, number_diff_feats, edit_feats, TOKEN_COLS, NUM_COLS, NUMD_COLS, EDIT_COLS
 
 _G = {}
 
@@ -98,8 +98,9 @@ PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_
            + ["nn_" + c for c in TOKEN_COLS] + ["an_" + c for c in TOKEN_COLS] + NUM_COLS)
 
 
-EXTRA_COLS = {"numdiff": NUMD_COLS, "skel": ["ns_" + c for c in TOKEN_COLS]}
-EXTRA_ORDER = ("numdiff", "skel")
+EXTRA_COLS = {"numdiff": NUMD_COLS, "skel": ["ns_" + c for c in TOKEN_COLS],
+              "edits": ["ce_" + c for c in EDIT_COLS] + ["cea_" + c for c in EDIT_COLS]}
+EXTRA_ORDER = ("numdiff", "skel", "edits")
 
 
 def extra_cols(extras):
@@ -133,6 +134,9 @@ def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, r
     if "skel" in ex:          # script-independent noise model: add/drop on phonetic-skeleton tokens
         sadd, sdrop, fq_s = _G["skel"]
         row += token_noise_feats(t1, t2, sadd, sdrop, ct1.lower(), fq_s)
+    if "edits" in ex:         # one-letter edit class log-odds: typo (true copy) vs distractor edit
+        en, ea = _G["edits"]
+        row += edit_feats(rn1.split(), rn2.split(), en) + edit_feats(ra1.split(), ra2.split(), ea)
     return row
 
 
@@ -140,13 +144,15 @@ def _py_chunk(cols):
     return np.array([_py_row(*r) for r in zip(*cols)], dtype=np.float32)
 
 
-def _init(tables, extras=(), skel=None):
+def _init(tables, extras=(), skel=None, edits=None):
     _G["t"] = tables
     _G["extras"] = tuple(extras)
     _G["skel"] = skel
+    _G["edits"] = edits
 
 
-def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000, extras=(), skel=None):
+def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=100_000, extras=(), skel=None,
+                    edits=None):
     """tables = (idf_n, dn, idf_a, da, name_add_lo, name_drop_lo, addr_add_lo, addr_drop_lo,
                   frequent_name_tokens, frequent_addr_tokens).
     Returns a float32 DataFrame (one preallocated block, no intermediate copies)."""
@@ -158,7 +164,7 @@ def string_features(cands, s1, pool, tables, n_jobs=None, chunk=1_000_000, sub=1
     cols = [c for c, *_ in CPD] + PY_COLS + extra_cols(extras)
     out = np.empty((len(ii), len(cols)), np.float32)
     ncpd = len(CPD)
-    with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables, extras, skel)) as pp:
+    with mp.get_context("fork").Pool(n_jobs, initializer=_init, initargs=(tables, extras, skel, edits)) as pp:
         for k in range(0, len(ii), chunk):
             i, j = ii[k:k + chunk], jj[k:k + chunk]
             A = {c: np.asarray(S1[c].take(i), dtype=object) for c in need}
@@ -248,7 +254,33 @@ def fmt_features(c, s1, pool, rows=None):
     return out
 
 
-def cheap_features(c, s1, pool, rows=None, fmt=False):
+OOV_FEATS = ["pn_oov_frac", "pn_oov_n", "pn_oov_all"]
+
+
+def name_oov(s1, pool):
+    """Per pool record: share and count of its clean-name tokens that no S1 name of the same country uses.
+    The generator replaces some true copies' names with invented words ('Jaxhalo', 'Belodelta'); 97-98% of
+    pool records named by one unseen word are true copies (ERR-02), distractors reuse real vocabulary."""
+    frac = np.zeros(len(pool), np.float32)
+    cnt = np.zeros(len(pool), np.float32)
+    pc = np.asarray(pool.country.values)
+    sc = np.asarray(s1.country.values)
+    for ct in pd.unique(pc):
+        voc = {t for n in pd.unique(np.asarray(s1.n_clean.values)[sc == ct]) if isinstance(n, str) for t in n.split()}
+        rows = np.flatnonzero(pc == ct)
+        names = np.asarray(pool.n_clean.values)[rows]
+        memo = {}
+        for r, n in zip(rows, names):
+            v = memo.get(n)
+            if v is None:
+                t = n.split() if isinstance(n, str) else []
+                k = sum(x not in voc for x in t)
+                v = memo[n] = (k / len(t) if t else 0.0, float(k))
+            frac[r], cnt[r] = v
+    return frac, cnt
+
+
+def cheap_features(c, s1, pool, rows=None, fmt=False, oov=False):
     """Features that need the FULL candidate set (competition context), materialized only for `rows`
     (bool mask or index array; None = all). One preallocated float32 block, no DataFrame copies:
     at 77M candidate pairs this is the difference between ~5 GB and an OOM kill."""
@@ -260,7 +292,7 @@ def cheap_features(c, s1, pool, rows=None, fmt=False):
     has_pr = "pr_score" in c
     cols = (["src", "n_cands_s1", "n_cands_pool", "a1_empty", "a2_empty"] + base + ["bs_total"]
             + [f"bst_{k}" for k in CTX] + ([f"prs_{k}" for k in CTX] if has_pr else [])
-            + (FMT_FEATS if fmt else []))
+            + (FMT_FEATS if fmt else []) + (OOV_FEATS if oov else []))
     out = np.empty((n, len(cols)), np.float32)
     g1, g2 = c.s1_idx.values, c.pool_idx.values
     si, pj = sel(g1), sel(g2)
@@ -284,4 +316,8 @@ def cheap_features(c, s1, pool, rows=None, fmt=False):
         k += len(CTX)
     if fmt:
         out[:, k:k + len(FMT_FEATS)] = fmt_features(c, s1, pool, rows)
+        k += len(FMT_FEATS)
+    if oov:
+        of, on = np.asarray(pool.oov_f.values)[pj], np.asarray(pool.oov_n.values)[pj]
+        out[:, k], out[:, k + 1], out[:, k + 2] = of, on, (of >= 1.0) & (on > 0)
     return pd.DataFrame(out, columns=cols, copy=False)

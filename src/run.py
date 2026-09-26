@@ -27,8 +27,8 @@ import lightgbm as lgb
 from .prep import load_split, load_gt
 from .blocking import KeyIndex, generate_candidates
 from .prerank import prerank_features, make_pruner, PR_COLS
-from .features import build_idf, cheap_features, string_features
-from .noise import LogOddsCounter, frequent_tokens
+from .features import build_idf, cheap_features, string_features, name_oov
+from .noise import LogOddsCounter, EditCounter, frequent_tokens
 from .matching import train_lgb, feat_cols, select, f05_macro
 
 T0 = time.time()
@@ -110,6 +110,11 @@ def main():
     ap.add_argument("--dump-xy", action="store_true", help="save the model feature matrix (for learner experiments)")
     ap.add_argument("--numdiff", action="store_true", help="house-number difference structure features (ERR-01)")
     ap.add_argument("--skelnoise", action="store_true", help="noise model on phonetic-skeleton tokens (cross-script)")
+    ap.add_argument("--edits", action="store_true", help="one-letter edit class log-odds: typo vs distractor edit")
+    ap.add_argument("--k-prior", type=int, default=0, help="reserved wide slots per S1 for empty-address (by name) "
+                    "and invented-name (by address) pool records")
+    ap.add_argument("--edits-ctx", action="store_true", help="--edits statistics split by lone vs accompanied edit")
+    ap.add_argument("--oov", action="store_true", help="pool-name tokens unseen in the country's S1 names (invented names)")
     ap.add_argument("--cos", type=int, default=0, help="cosine-normalized blocking: keep top-N by cosine in the wide "
                                                         "set and feed cosine scores to the pre-ranker (0 = off)")
     ap.add_argument("--d-max-pairs", type=int, default=15_000_000, help="max candidate pairs for noise dictionaries")
@@ -124,6 +129,9 @@ def main():
     if a.extra_keys:
         import src.blocking as _blk
         _blk.MORE_KEYS = True
+    if a.edits_ctx:
+        import src.noise as _nz
+        _nz.EDIT_CTX = a.edits = True
     import shutil
     for d in a.extra_work:
         for f in os.listdir(d):
@@ -133,7 +141,19 @@ def main():
                 log("imported", f, "from", d)
     W = lambda f: os.path.join(a.work, f)
     kt, kn, ka, kx = map(int, a.wide.split(","))
-    wide = dict(k_total=kt, k_name=kn, k_addr=ka, k_cross=kx, k_cos=a.cos)
+    wide = dict(k_total=kt, k_name=kn, k_addr=ka, k_cross=kx, k_cos=a.cos, k_prior=a.k_prior)
+
+    def with_prior(s1, pool):
+        """Pool prior codes for --k-prior (1 empty address, 2 invented name); also caches the --oov columns."""
+        if (a.k_prior or a.oov) and "oov_f" not in pool:
+            pool["oov_f"], pool["oov_n"] = name_oov(s1, pool)
+        if not a.k_prior:
+            return None
+        empty = np.asarray(pool.a_clean.str.len().fillna(0).values) == 0
+        inv = (np.asarray(pool.oov_f.values) >= 1.0) & (np.asarray(pool.oov_n.values) > 0)
+        code = np.where(empty, 1, np.where(inv, 2, 0)).astype(np.int8)
+        log(f"pool prior: empty address {(code == 1).mean():.3f}, invented name {(code == 2).mean():.3f}")
+        return code
     PR_END = int(a.pr_frac * 10_000)
     M_START, M_END = PR_END, PR_END + int(a.m_frac * 10_000)
     D_START = 10_000 - int(a.d_frac * 10_000)
@@ -143,7 +163,7 @@ def main():
         """Deterministic pre-ranker (same data + params -> same model in every job)."""
         if os.path.exists(W("prerank.txt")):
             return lgb.Booster(model_file=W("prerank.txt"))
-        cw = generate_candidates(s1, pool, index=ix, s1_subset=h < PR_END, verbose=False, **wide)
+        cw = generate_candidates(s1, pool, index=ix, s1_subset=h < PR_END, verbose=False, prior=with_prior(s1, pool), **wide)
         yw = labels(cw, s1, pool, gtp)
         ntrue = gtp.s1_id.isin(set(s1.entity_id.values[h < PR_END])).sum()
         log(f"pre-ranker slice: {len(cw):,} wide pairs, wide recall {yw.sum() / ntrue:.4f}")
@@ -179,7 +199,7 @@ def main():
         if not os.path.exists(W("train_cands.parquet")):
             ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
             pr = ensure_prerank(s1, pool, gtp, h, ix)
-            c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), **wide)
+            c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), prior=with_prior(s1, pool), **wide)
             del ix
             gc.collect()
             c.to_parquet(W("train_cands.parquet"))
@@ -194,6 +214,7 @@ def main():
         if len(dsel) > a.d_max_pairs:   # plenty for token statistics; bounds time and memory
             dsel = np.sort(np.random.default_rng(0).choice(dsel, a.d_max_pairs, replace=False))
         cnt_n, cnt_a, cnt_s = LogOddsCounter(), LogOddsCounter(), LogOddsCounter()
+        cnt_en, cnt_ea = EditCounter(), EditCounter()
         di_all, dj_all, dy_all = c.s1_idx.values[dsel], c.pool_idx.values[dsel], y_all[dsel]
         for k in range(0, len(dsel), 2_000_000):     # stream: never more than 2M pairs of strings alive
             di, dj, dy = di_all[k:k + 2_000_000], dj_all[k:k + 2_000_000], dy_all[k:k + 2_000_000]
@@ -202,17 +223,24 @@ def main():
             cnt_a.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy, ct)
             if a.skelnoise:
                 cnt_s.update(s1.nsk.array.take(di), pool.nsk.array.take(dj), dy, ct)
+            if a.edits:
+                cnt_en.update(s1.rn.array.take(di), pool.rn.array.take(dj), dy)
+                cnt_ea.update(s1.ra.array.take(di), pool.ra.array.take(dj), dy)
         nadd, ndrop = cnt_n.result()
         aadd, adrop = cnt_a.result()
         sadd, sdrop = cnt_s.result() if a.skelnoise else ({}, {})
-        del cnt_n, cnt_a, cnt_s, di_all, dj_all, dy_all, dsel, d
+        edits_t = (cnt_en.result(), cnt_ea.result()) if a.edits else None
+        if a.edits:
+            show = {k: round(v, 2) for k, v in edits_t[0].items() if k.split("|")[0][-3:] in ("ins", "sub") and k.count("|") == 1}
+            log(f"edit classes: name {len(edits_t[0])} addr {len(edits_t[1])}; name (op|position) log-odds {show}")
+        del cnt_n, cnt_a, cnt_s, cnt_en, cnt_ea, di_all, dj_all, dy_all, dsel, d
         gc.collect()
         log(f"noise dicts from {min(int((hc >= D_START).sum()), a.d_max_pairs):,} D pairs: name add {len(nadd)} drop {len(ndrop)} | addr add {len(aadd)} drop {len(adrop)}")
         idf_n = build_idf([s1.nsk, pool.nsk])
         idf_a = build_idf([s1.ask, pool.ask])
         fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
         tables = (*idf_n, *idf_a, nadd, ndrop, aadd, adrop, *fq)
-        extras = tuple(e for e, on in (("numdiff", a.numdiff), ("skel", a.skelnoise)) if on)
+        extras = tuple(e for e, on in (("numdiff", a.numdiff), ("skel", a.skelnoise), ("edits", a.edits)) if on)
         skel = (sadd, sdrop, frequent_tokens([s1.nsk, pool.nsk])) if a.skelnoise else None
 
         # ---- features for group M (context computed over ALL candidates, materialized for M only)
@@ -221,13 +249,15 @@ def main():
         # order M rows as [train..., holdout...] so both are contiguous views (no copies)
         idx = np.flatnonzero(m)
         idx = idx[np.argsort(va_all[idx], kind="stable")]
-        cheap = cheap_features(c, s1, pool, rows=idx, fmt=a.fmt)
+        if a.oov:
+            with_prior(s1, pool)
+        cheap = cheap_features(c, s1, pool, rows=idx, fmt=a.fmt, oov=a.oov)
         cm, y = c.iloc[idx].reset_index(drop=True), y_all[idx]
         ntr = int((~va_all[idx]).sum())
         del y_all, c, hc, va_all, m
         gc.collect()
         log(f"features on {len(cm):,} model pairs")
-        S = string_features(cm, s1, pool, tables, a.jobs, extras=extras, skel=skel)
+        S = string_features(cm, s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=edits_t)
         F = list(S.columns) + list(cheap.columns)
         X = np.empty((len(cm), len(F)), np.float32)
         X[:, :S.shape[1]] = S.values
@@ -262,7 +292,7 @@ def main():
         with open(W("model.pkl"), "wb") as f:
             pickle.dump(dict(model=model, feats=F, thr=float(best[1]), holdout_f05=best[0],
                              noise=(nadd, ndrop, aadd, adrop), fmt=a.fmt, extras=extras,
-                             skel_dicts=(sadd, sdrop)), f)
+                             skel_dicts=(sadd, sdrop), edit_tables=edits_t, edit_ctx=a.edits_ctx, oov=a.oov), f)
         json.dump(dict(holdout_f05=best[0], threshold=float(best[1]), best_iter=model.best_iteration,
                        features=F, args=vars(a)), open(W("train_report.json"), "w"), indent=1)
         del X, cm, s1, pool
@@ -278,7 +308,7 @@ def main():
     if not os.path.exists(W("test_cands.parquet")):
         pr = lgb.Booster(model_file=W("prerank.txt"))
         ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
-        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), **wide)
+        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), prior=with_prior(s1, pool), **wide)
         del ix
         gc.collect()
         c.to_parquet(W("test_cands.parquet"))
@@ -290,11 +320,16 @@ def main():
     with open(W("model.pkl"), "rb") as f:
         M = pickle.load(f)
     thr = a.threshold if a.threshold is not None else M["thr"]
+    if M.get("edit_ctx"):
+        import src.noise as _nz
+        _nz.EDIT_CTX = True
     log(f"using threshold {thr:.3f}")
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), s1.entity_id.values, c.s1_idx.values,
                 pool.entity_id.array, c.pool_idx.values, "candidate_entity_ids")
     log("wrote candidate_pairs.tsv")
-    cheap = cheap_features(c, s1, pool, fmt=M.get("fmt", False))
+    if M.get("oov", False) and "oov_f" not in pool:
+        pool["oov_f"], pool["oov_n"] = name_oov(s1, pool)
+    cheap = cheap_features(c, s1, pool, fmt=M.get("fmt", False), oov=M.get("oov", False))
     idf_n = build_idf([s1.nsk, pool.nsk])
     idf_a = build_idf([s1.ask, pool.ask])
     fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
@@ -308,7 +343,7 @@ def main():
     del cheap
     for k in range(0, len(c), a.predict_chunk):
         sl = slice(k, k + a.predict_chunk)
-        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel)
+        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs, extras=extras, skel=skel, edits=M.get("edit_tables"))
         X = np.hstack([S.values, ch[sl]])
         assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
         p[sl] = M["model"].predict(X, num_threads=0)

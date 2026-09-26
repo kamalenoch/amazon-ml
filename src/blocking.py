@@ -193,7 +193,7 @@ class KeyIndex:
 
 def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, k_addr=10, k_cross=0,
                         budget=60_000_000, n_jobs=None, verbose=True, prerank=None, s1_subset=None, index=None,
-                        k_cos=0):
+                        k_cos=0, k_prior=0, prior=None):
     """Returns DataFrame [s1_idx, pool_idx, bs_*] (row indices into s1/pool).
     index: a prebuilt KeyIndex (reuse across passes). s1_subset: bool mask of S1 rows to process.
     prerank: callable(DataFrame)->DataFrame applied to every chunk's kept pairs (learned pruning)."""
@@ -238,6 +238,15 @@ def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, 
         keep = (_group_rank(g, s_tot) < k_total) | (_group_rank(g, s_name) < k_name) | \
                (_group_rank(g, s_addr) < k_addr) | (_group_rank(g, s_cross) < k_cross)
         extra = {}
+        pc = None
+        if k_prior and prior is not None:
+            # reserved slots for pool records that are almost surely true copies of SOME S1 but miss a key
+            # family: empty address (99.3% owned) by name score, invented name (97-98% owned) by address score
+            pc = prior[(up & ((1 << 24) - 1)).astype(np.int64)]
+            for code, sc in ((1, s_name), (2, s_addr)):
+                m = pc == code
+                if m.any():
+                    keep |= m & (_group_rank(g, np.where(m, sc, np.float32(-1))) < k_prior)
         if k_cos:
             pidx = (up & ((1 << 24) - 1)).astype(np.int64)
             ms, mp_ = ix.smass[g], ix.pmass[pidx]
@@ -248,6 +257,9 @@ def generate_candidates(s1, pool, cap=600, df_scale=1.0, k_total=30, k_name=10, 
             extra = {"bs_cos": cos[keep].astype(np.float32), "bs_ncos": ncos[keep].astype(np.float32),
                      "bs_acos": acos[keep].astype(np.float32)}
             del pidx, ms, mp_, cos, ncos, acos
+        if pc is not None:
+            extra["bs_prior"] = pc[keep].astype(np.float32)
+            del pc
         blk = pd.DataFrame({"s1_idx": g[keep], "pool_idx": (up[keep] & ((1 << 24) - 1)).astype(np.int32),
                             "bs_name": s_name[keep], "bs_addr": s_addr[keep], "bs_cross": s_cross[keep],
                             "bs_nkeys": nkeys[keep], "bs_nnk": n_nk[keep], "bs_nak": n_ak[keep],

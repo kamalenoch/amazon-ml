@@ -30,16 +30,16 @@ code("""
 import glob, os, sys, subprocess
 whls = glob.glob("/kaggle/input/**/*.whl", recursive=True)
 try:
-    import unidecode, rapidfuzz
+    import anyascii, rapidfuzz
     print("already installed")
 except ImportError:
     if whls:
         dirs = sorted({os.path.dirname(w) for w in whls})
-        cmd = [sys.executable, "-m", "pip", "install", "-q", "--no-index"] + sum([["--find-links", d] for d in dirs], []) + ["unidecode", "rapidfuzz"]
+        cmd = [sys.executable, "-m", "pip", "install", "-q", "--no-index"] + sum([["--find-links", d] for d in dirs], []) + ["anyascii", "rapidfuzz"]
     else:
         cmd = [sys.executable, "-m", "pip", "install", "-q", "unidecode==1.3.8", "rapidfuzz==3.9.7"]
     print(subprocess.run(cmd, capture_output=True, text=True).stderr[-2000:])
-import unidecode, rapidfuzz, lightgbm, pandas, numpy
+import anyascii, rapidfuzz, lightgbm, pandas, numpy
 print("python", sys.version.split()[0], "rapidfuzz", rapidfuzz.__version__, "lightgbm", lightgbm.__version__, "pandas", pandas.__version__, "numpy", numpy.__version__)
 !nproc; free -g
 """)
@@ -59,6 +59,8 @@ ROOT = os.path.dirname(DATA)                       # .../student_resource
 print(DATA)
 """)
 STAGE = os.environ.get("STAGE", "all")
+FLAGS = os.environ.get("FLAGS", "")          # pipeline flags, identical for every job (T, S, R) of one version
+SUFFIX = os.environ.get("SUFFIX", "")        # notebook name suffix, e.g. _v4
 if STAGE in ("predict", "resume"):
     code("""
 # Attach outputs of earlier jobs as Notebook Output inputs; their cached stages are reused (symlinked).
@@ -72,11 +74,11 @@ EXTRA = " ".join(f'"{d}"' for d in imp)
 RUN_STAGE = "__RUN_STAGE__"
 """)
     code("""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {RUN_STAGE} --extra-work {EXTRA} 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {RUN_STAGE} __FLAGS__ --extra-work {EXTRA} 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
 """)
 else:
     code(f"""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {STAGE} 2>&1 | grep -v "Warning\\\\]" | tee /kaggle/working/run.log
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {STAGE} {FLAGS} 2>&1 | grep -v "Warning\\\\]" | tee /kaggle/working/run.log
 """)
 if STAGE in ("all", "predict", "resume"):
     code("""
@@ -93,6 +95,7 @@ nb = {"cells": cells, "metadata": {"kernelspec": {"display_name": "Python 3", "l
 name = {"all": "kaggle_pipeline", "train": "kaggle_T_train", "test-cands": "kaggle_S_test_cands",
         "predict": "kaggle_F_predict", "resume": "kaggle_R_resume_train_predict"}[STAGE]
 for c in cells:
-    c["source"] = [l.replace("__RUN_STAGE__", "all" if STAGE == "resume" else "predict") for l in c["source"]]
-json.dump(nb, open(f"notebooks/{name}.ipynb", "w"), indent=1)
-print(f"wrote notebooks/{name}.ipynb", len(cells), "cells")
+    c["source"] = [l.replace("__RUN_STAGE__", "all" if STAGE == "resume" else "predict").replace("__FLAGS__", FLAGS)
+                   for l in c["source"]]
+json.dump(nb, open(f"notebooks/{name}{SUFFIX}.ipynb", "w"), indent=1)
+print(f"wrote notebooks/{name}{SUFFIX}.ipynb", len(cells), "cells", "flags:", FLAGS or "(none)")

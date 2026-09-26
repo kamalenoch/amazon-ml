@@ -28,6 +28,12 @@ def prerank_features(b):
             X["r_" + c] = _group_rank(g, v).astype(np.float32)
             X["q_" + c] = (v / (pd.Series(v).groupby(g).transform("max").values + 1e-6)).astype(np.float32)
             cols += [c, "r_" + c, "q_" + c]
+    if "bs_prior" in b:                # reserved-slot records (--k-prior): code + rank within their code
+        pc = b.bs_prior.values.astype(np.float32)
+        sc = np.where(pc == 1, X.bs_name.values, np.where(pc == 2, X.bs_addr.values, -1.0)).astype(np.float32)
+        X["bs_prior"] = pc
+        X["r_prior"] = np.where(pc > 0, _group_rank(g, sc), 99).astype(np.float32)
+        cols += ["bs_prior", "r_prior"]
     return X[cols]
 
 
