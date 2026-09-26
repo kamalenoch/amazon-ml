@@ -26,7 +26,7 @@ import lightgbm as lgb
 
 from .prep import load_split, load_gt
 from .blocking import KeyIndex, generate_candidates
-from .prerank import prerank_features, make_pruner, PR_COLS
+from .prerank import prerank_features, make_pruner, StringSims, PR_COLS
 from .features import build_idf, cheap_features, string_features
 from .noise import LogOddsCounter, frequent_tokens
 from .matching import train_lgb, feat_cols, select, f05_macro
@@ -95,10 +95,15 @@ def main():
     ap.add_argument("--cap", type=int, default=1200, help="pool df cap for single-token keys")
     ap.add_argument("--cap-composite", type=int, default=600, help="pool df cap for composite keys")
     ap.add_argument("--df-scale", type=float, default=1.0)
-    ap.add_argument("--wide", default="150,40,40,40", help="k_total,k_name,k_addr,k_cross before pruning")
+    ap.add_argument("--wide", default="200,60,60,60", help="k_total,k_name,k_addr,k_cross before pruning")
     ap.add_argument("--k-keep", type=int, default=35, help="candidates kept per S1 after pre-ranking")
     ap.add_argument("--pr-frac", type=float, default=0.05)
     ap.add_argument("--m-frac", type=float, default=0.30, help="share of train S1 used for the model")
+    ap.add_argument("--easy-thr", type=float, default=1e-3,
+                    help="model-training rows with pre-ranker score <= this are 'easy' negatives (subsampled)")
+    ap.add_argument("--easy-keep", type=float, default=1.0, help="sampling rate of easy rows (weight 1/rate)")
+    ap.add_argument("--skip-thr", type=float, default=1e-4,
+                    help="holdout/test rows with pre-ranker score <= this are not scored (p = 0)")
     ap.add_argument("--holdout", type=float, default=0.15)
     ap.add_argument("--d-frac", type=float, default=0.30, help="share of train S1 used for noise dictionaries")
     ap.add_argument("--rounds", type=int, default=2000)
@@ -141,7 +146,7 @@ def main():
         yw = labels(cw, s1, pool, gtp)
         ntrue = gtp.s1_id.isin(set(s1.entity_id.values[h < PR_END])).sum()
         log(f"pre-ranker slice: {len(cw):,} wide pairs, wide recall {yw.sum() / ntrue:.4f}")
-        Xw = prerank_features(cw)
+        Xw = prerank_features(cw, StringSims(s1, pool))
         prm = dict(objective="binary", learning_rate=0.1, num_leaves=63, min_data_in_leaf=200, verbose=-1,
                    num_threads=4, deterministic=True, force_row_wise=True, seed=7)
         from .blocking import _group_rank
@@ -173,7 +178,8 @@ def main():
         if not os.path.exists(W("train_cands.parquet")):
             ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
             pr = ensure_prerank(s1, pool, gtp, h, ix)
-            c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), k_pool=a.k_pool, **wide)
+            c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep, StringSims(s1, pool)),
+                                    k_pool=a.k_pool, **wide)
             del ix
             gc.collect()
             c.to_parquet(W("train_cands.parquet"))
@@ -207,13 +213,22 @@ def main():
         # ---- features for group M (context computed over ALL candidates, materialized for M only)
         m = (hc >= M_START) & (hc < M_END)
         va_all = hc >= M_START + (1 - a.holdout) * (M_END - M_START)
+        # training rows: every row the pre-ranker finds plausible + an `easy_keep` sample of the easy
+        # negatives (weight 1/easy_keep) -> ~3x more S1 per GB. Holdout rows: exactly the rows scored at test.
+        ps = c.pr_score.values
+        easy = ps <= a.easy_thr
+        u = np.random.default_rng(11).random(len(c))
+        keep_tr = m & ~va_all & (~easy | (u < a.easy_keep))
+        keep_va = m & va_all & (ps > a.skip_thr)
         # order M rows as [train..., holdout...] so both are contiguous views (no copies)
-        idx = np.flatnonzero(m)
-        idx = idx[np.argsort(va_all[idx], kind="stable")]
+        idx = np.r_[np.flatnonzero(keep_tr), np.flatnonzero(keep_va)]
+        ntr = int(keep_tr.sum())
+        w_tr = np.where(easy[idx[:ntr]], 1.0 / a.easy_keep, 1.0).astype(np.float32)
+        log(f"model rows: train {ntr:,} of {int((m & ~va_all).sum()):,} (easy sampled at {a.easy_keep})"
+            f" | holdout {len(idx) - ntr:,} of {int((m & va_all).sum()):,} (pr_score > {a.skip_thr})")
         cheap = cheap_features(c, s1, pool, rows=idx)
         cm, y = c.iloc[idx].reset_index(drop=True), y_all[idx]
-        ntr = int((~va_all[idx]).sum())
-        del y_all, c, hc, va_all, m
+        del y_all, c, hc, va_all, m, ps, easy, u, keep_tr, keep_va
         gc.collect()
         log(f"features on {len(cm):,} model pairs")
         S = string_features(cm, s1, pool, tables, a.jobs)
@@ -226,7 +241,7 @@ def main():
         log(f"fit lgb: train {ntr:,}  holdout {len(cm) - ntr:,}  pos rate {y.mean():.3f}  feats {len(F)}")
         model = train_lgb(X[:ntr], y[:ntr], rounds=a.rounds, valid=(X[ntr:], y[ntr:]),
                           params=dict(learning_rate=a.lr, num_leaves=a.num_leaves, min_data_in_leaf=a.min_data),
-                          feature_name=F)
+                          feature_name=F, weight=w_tr)
         va = np.zeros(len(cm), bool)
         va[ntr:] = True
         p = model.predict(X[ntr:], num_threads=0)
@@ -284,7 +299,8 @@ def main():
     if not os.path.exists(W("test_cands.parquet")):
         pr = lgb.Booster(model_file=W("prerank.txt"))
         ix = KeyIndex(s1, pool, a.cap, a.df_scale, a.jobs, cap_composite=a.cap_composite)
-        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep), k_pool=a.k_pool, **wide)
+        c = generate_candidates(s1, pool, index=ix, prerank=make_pruner(pr, a.k_keep, StringSims(s1, pool)),
+                                k_pool=a.k_pool, **wide)
         del ix
         gc.collect()
         c.to_parquet(W("test_cands.parquet"))
@@ -310,14 +326,16 @@ def main():
     ch = cheap.values
     cheap_cols = list(cheap.columns)
     del cheap
-    for k in range(0, len(c), a.predict_chunk):
-        sl = slice(k, k + a.predict_chunk)
-        S = string_features(c.iloc[sl], s1, pool, tables, a.jobs)
-        X = np.hstack([S.values, ch[sl]])
+    live = np.flatnonzero(c.pr_score.values > a.skip_thr)      # the rest keep p = 0 (as in the holdout)
+    log(f"scoring {len(live):,} of {len(c):,} candidate rows (pr_score > {a.skip_thr})")
+    for k in range(0, len(live), a.predict_chunk):
+        rows = live[k:k + a.predict_chunk]
+        S = string_features(c.iloc[rows], s1, pool, tables, a.jobs)
+        X = np.hstack([S.values, ch[rows]])
         assert list(S.columns) + cheap_cols == M["feats"], "feature order mismatch"
-        p[sl] = M["model"].predict(X, num_threads=0)
+        p[rows] = M["model"].predict(X, num_threads=0)
         del S, X
-        log(f"  predicted {min(k + a.predict_chunk, len(c)):,}/{len(c):,}")
+        log(f"  predicted {min(k + a.predict_chunk, len(live)):,}/{len(live):,}")
     pd.DataFrame({"s1_idx": c.s1_idx.values, "pool_idx": c.pool_idx.values, "p": p}).to_parquet(W("test_scores.parquet"))
     method = M.get("method", ("threshold", thr))
     if a.threshold is not None:

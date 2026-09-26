@@ -8,6 +8,8 @@ Metric: macro F0.5 per Source-1 entity (precision-weighted, singletons count).
 | v1 | 0.9597 | **0.9405** | 95.8% | LightGBM, 46 features, one-to-one selection |
 | v2 | 0.9784 | **0.9640** | 96.6% | + noise-model features, pre-ranker pruning, extra keys, fast features |
 | v3.1 | dev 0.9810 | **0.9697** | 96.6% (v2 candidates) | + France: fallback for tokens unseen in train; 2x model rows; holdout-chosen selection |
+| v4 | dev 0.9835 | – | dev 98.5% | distractor-generator features (house-number shift, legal swap), pool-side top-3 |
+| v5 | dev 0.9840 (never-seen 52k S1: 0.9855) | ? | dev 98.8% | string-aware pre-ranker, France region/department parsing, 2.2x faster test scoring |
 
 **Current best: v3.1 (public LB 0.969683)** — this commit. Outputs: Release `v3.1`, summary: [`results/v3.1`](results/v3.1/summary.json).
 
@@ -23,16 +25,21 @@ TSVs ─► normalize ─► blocking (hashed multi-key IDF, top-K) ─► pair 
   phonetic consonant skeleton; OCR digit fixes; EN/IN/FR address abbreviations; state detection; house numbers.
 - **Blocking**: country-scoped hashed keys — name skeleton tokens, prefixes, token pairs, joined-name prefix
   (for `southernexports.com`), address tokens, number+token, token pairs, name×address cross keys. IDF-weighted,
-  frequent keys (pool df > 600) dropped, union of top-30 total / top-10 name / top-10 address per S1.
-- **Features**: rapidfuzz similarities, IDF-weighted Jaccard, rare-token-missing IDF, legal-form agreement,
-  number overlap / conflict / near-typo, blocking scores, and competition context (how strongly a pool record
-  prefers this S1 over its next-best S1 — the strongest signal).
-- **Selection**: each S2/S3 record goes to at most one S1 (holds for 100% of train ground truth), then `p >= thr`.
+  frequent keys dropped (pool df > 1200 single / 600 composite), wide set = union of top-200 total / top-60 name /
+  top-60 address / top-60 cross per S1.
+- **Pre-ranker** (`src/prerank.py`): LightGBM on blocking statistics + 4 rapidfuzz similarities, run inside every
+  blocking chunk; keeps the top-35 per S1 plus every pool record's top-3 S1 (dev: 98.8% of true pairs kept).
+- **Features** (93): rapidfuzz similarities, IDF-weighted Jaccard, noise model (log-odds of each added / dropped
+  token, learned on a disjoint S1 group, language-agnostic fallback for unseen tokens), house-number shift and
+  legal-form transitions (the distractor generator: "the business next door"), and competition context (how strongly
+  a pool record prefers this S1 over its next-best S1 by pre-ranker score — the strongest signal).
+- **Selection**: each S2/S3 record goes to at most one S1 (holds for 100% of train ground truth), then a global
+  threshold or per-S1 expected-F0.5 — whichever scores better on the holdout.
 
 ## Run
 **Kaggle (4 CPU / 30 GB), as parallel jobs** (see `notebooks/`):
-- `kaggle_T_train.ipynb` (train normalization + blocking) and `kaggle_S_test_cands.ipynb` (test normalization + blocking) run in parallel (~75 min each);
-- `kaggle_R_resume_train_predict.ipynb` imports both outputs, trains and predicts (~2 h), writes `output/`;
+- `kaggle_T_train.ipynb` (train normalization + blocking + model) and `kaggle_S_test_cands.ipynb` (test normalization
+  + blocking) run in parallel; `kaggle_F_predict.ipynb` imports both outputs and writes `output/`;
 - `kaggle_pipeline.ipynb` runs everything in one job. Always run as *Save & Run All (Commit)*.
 
 **Local / any Linux box (≥ 30 GB RAM):**

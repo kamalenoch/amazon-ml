@@ -26,7 +26,7 @@ NAME_STOP = {"the", "and", "of", "de", "des", "du", "la", "le", "les", "d", "l",
              "nee", "id", "m/s", "ms", "mr", "mrs", "sri", "shri", "shree"}
 
 ADDR_MAP = {
-    "street": "st", "str": "st", "st": "st", "avenue": "ave", "av": "ave", "ave": "ave", "avn": "ave",
+    "street": "st", "str": "st", "st": "st", "saint": "st", "ch": "chem", "q": "quai", "avenue": "ave", "av": "ave", "ave": "ave", "avn": "ave",
     "road": "rd", "rd": "rd", "drive": "dr", "dr": "dr", "lane": "ln", "ln": "ln",
     "circle": "cir", "cir": "cir", "court": "ct", "ct": "ct", "boulevard": "blvd", "blvd": "blvd",
     "bd": "blvd", "bld": "blvd", "place": "pl", "pl": "pl", "parkway": "pkwy", "pkwy": "pkwy",
@@ -125,9 +125,13 @@ def skeleton(t: str) -> str:
     return collapse("".join(c for c in t if c not in _VOWELS))
 
 
+_RE_HOUSE_SUFFIX = re.compile(r"\d+[a-z]")
+
+
 def _fix_ocr(tok: str) -> str:
     # tokens mixing letters and digits with a majority of letters: '0ne' -> 'one'
-    if tok.isalnum() and not tok.isalpha() and not tok.isdigit():
+    # (a house number with a letter suffix - '5b', '12a' - is not an OCR error)
+    if tok.isalnum() and not tok.isalpha() and not tok.isdigit() and not _RE_HOUSE_SUFFIX.fullmatch(tok):
         n_alpha = sum(c.isalpha() for c in tok)
         if n_alpha >= len(tok) / 2:
             return tok.translate(_OCR)
@@ -145,6 +149,33 @@ def state_of(part: str):
     if len(p) == 2 and p.isalpha():
         return p if (p in _STATES or p in _IN_STATES) else None
     return _STATE_SKEL.get(skeleton(p)) if len(p) >= 4 else None
+
+
+# French test records: S1 always names the REGION, S2/S3 copies name the region, the DEPARTMENT or
+# nothing. US/India state variants (KY / Kentucky, RJ / Rajasthan) are parsed out into `state`; this does
+# the same for France so a department-for-region swap is not seen as an address change.
+_FR_REGION = {"hautsdefrance": "hdf", "nouvelleaquitaine": "naq", "paysdelaloire": "pdl"}
+_FR_DEPT = {d: "hdf" for d in ("nord", "pasdecalais", "somme", "oise", "aisne")}
+_FR_DEPT.update({d: "naq" for d in ("gironde", "landes", "pyreneesatlantiques", "lotetgaronne", "dordogne",
+                                     "charente", "charentemaritime", "deuxsevres", "vienne", "hautevienne",
+                                     "creuse", "correze")})
+_FR_DEPT.update({d: "pdl" for d in ("loireatlantique", "maineetloire", "mayenne", "sarthe", "vendee")})
+_FR_ALL = {**_FR_DEPT, **_FR_REGION}
+
+
+def fr_split(s: str):
+    """French address -> (address without region/department components, region code or '')."""
+    if not s:
+        return s, ""
+    st, keep = "", []
+    for part in s.split(","):
+        k = "".join(ch for ch in to_ascii(part).lower() if ch.isalpha())
+        code = _FR_ALL.get(k)
+        if code:
+            st = code
+        else:
+            keep.append(part)
+    return ",".join(keep), st
 
 
 # ----------------------------------------------------------------------------- public API

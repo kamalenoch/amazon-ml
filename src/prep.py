@@ -4,7 +4,7 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 
-from .normalize import norm_name, norm_addr, skeleton
+from .normalize import norm_name, norm_addr, skeleton, fr_split
 from .noise import raw_tokens, raw_numbers
 
 NORM_COLS = ["n_clean", "legal", "a_clean", "nums", "state", "nsk", "ask", "rn", "ra", "ru"]
@@ -20,11 +20,15 @@ def read_tsv(path):
 
 
 def _norm_chunk(args):
-    names, addrs = args
+    names, addrs, countries = args
     out = []
-    for n, a in zip(names, addrs):
+    for n, a, ct in zip(names, addrs, countries):
+        fr_st = ""
+        if ct == "France":
+            a, fr_st = fr_split(a)
         nc, _, legal = norm_name(n)
         ac, _, nums, st = norm_addr(a)
+        st = st or fr_st
         out.append((nc, " ".join(legal), ac, " ".join(nums), st,
                     " ".join(skeleton(t) for t in nc.split()),          # name skeleton tokens
                     " ".join(skeleton(t) if t.isalpha() else t for t in ac.split()),  # addr skeleton tokens
@@ -35,8 +39,8 @@ def _norm_chunk(args):
 
 def normalize_df(df, n_jobs=None, chunk=50_000):
     n_jobs = n_jobs or os.cpu_count()
-    names, addrs = df.business_name.tolist(), df.business_address.tolist()
-    parts = [(names[i:i + chunk], addrs[i:i + chunk]) for i in range(0, len(df), chunk)]
+    names, addrs, cts = df.business_name.tolist(), df.business_address.tolist(), df.country.tolist()
+    parts = [(names[i:i + chunk], addrs[i:i + chunk], cts[i:i + chunk]) for i in range(0, len(df), chunk)]
     if n_jobs > 1 and len(parts) > 1:
         with mp.get_context("fork").Pool(n_jobs) as pool:
             res = pool.map(_norm_chunk, parts)

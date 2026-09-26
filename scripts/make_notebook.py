@@ -19,7 +19,7 @@ def code(s):
 md("""
 # Amazon ML Challenge 2026 — Business Entity Resolution
 
-v2 pipeline: normalize → key index (cap 1200/600) → learned pre-ranker pruning → noise-model + string features → LightGBM → one-to-one selection.
+v5 pipeline: normalize (France region/department → state) → key index (cap 1200/600) → wide candidates (200/60/60/60) → string-aware pre-ranker keeps top-35 per S1 + top-3 per pool record → noise-model + distractor-generator + string features → LightGBM → one-to-one + holdout-chosen selection.
 Settings: **Accelerator: None (CPU)**, **Internet: On**. Add the challenge data as an Input.
 Run with **Save Version → Save & Run All (Commit)** — only committed versions keep their output files.
 Outputs kept for the team: `output/*.tsv`, `work/model.pkl`, `work/prerank.txt`, `work/holdout_preds.parquet`,

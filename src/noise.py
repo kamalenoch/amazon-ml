@@ -62,12 +62,18 @@ _TOK = re.compile(r"[a-z0-9]+")
 _NUM = re.compile(r"[0-9#]+")
 
 
+_DOTTED = re.compile(r"(?<![a-z0-9])(?:[a-z]\.){2,}[a-z]?\.?")
+
+
 def raw_tokens(s: str):
     if not s:
         return ()
     if not s.isascii():
         s = unidecode(s)
-    return tuple(sorted(set(_TOK.findall(s.lower()))))
+    s = s.lower()
+    # dotted abbreviations are one token: 'E.U.R.L.' -> 'eurl', 'L.L.C.' -> 'llc' (not e/u/r/l letters)
+    s = _DOTTED.sub(lambda m: m.group(0).replace(".", ""), s)
+    return tuple(sorted(set(_TOK.findall(s))))
 
 
 def raw_numbers(s: str):

@@ -102,6 +102,30 @@ across S1 chunks, pre-ranker score) is added to the S1-side top-35: recall 98.11
 | 255 leaves instead of 127 | 0.9827 (rejected) |
 | Full pipeline on 7,503 never-seen S1: v2 / v3.1 / v4 | 0.9815 / 0.9810 / **0.9852** |
 
+## v5: string-aware pre-ranker + France address fix (dev: 5 states, df-scale 15.2)
+Error analysis of v4 (dev holdout, loss 0.0165): FPs 0.0062, model FNs 0.0054, blocking misses 0.0049.
+- Empty-address pool records: 4.5% of true copies but 0.1% of distractors, yet 40% of blocking misses and 41% of
+  model FNs. Their candidates tie on blocking score (name keys only), so the bs_* context features (the model's top
+  features) carried no signal. Empty-address FPs are true copies of ANOTHER S1 with the same name.
+- Full-scale pruning loss (v2 T log): wide recall 97.77% -> kept 96.54% at K=35.
+
+| Change (dev) | Result |
+|---|---|
+| Pre-ranker + 4 cpdist sims (name tset / joined ratio, address tset, numbers tset) + group-relative sum | recall@35 of pre-ranker slice 98.22% -> 98.77% (wide ceiling 98.74%); blocking recall 98.50% -> 98.77% |
+| same, full model | holdout 0.9827 -> 0.9843; never-seen 52k S1 (hash 3500-7000) 0.9846 -> 0.9855 |
+| Score only rows with pr_score > 1e-4 at holdout/test (45% of rows, 0.04% of positives) | 0.9855 -> 0.9854, test scoring ~2.2x faster |
+| Easy-negative subsampling (10%, weight 10) | 0.9855 -> 0.9851 -> not used (full-scale learning curve is flat anyway) |
+| Dotted abbreviations as one token (E.U.R.L. -> eurl) | never-seen 0.9845 -> 0.9846 (neutral on US/India; for France) |
+| Wide K 150/40/40/40 -> 500/150/150/150 | dev wide recall 98.76 -> 98.82 (dev saturates at ~111 wide/S1; full scale has 180/S1) -> 200/60/60/60 |
+
+France (test outputs, no labels): S1 always names the region; S2/S3 name the region, the department (Nord, Gironde,
+Loire-Atlantique, Pas-de-Calais) or nothing. v3.1 matched 62.9% of region-records but 54.9% of department-records and
+56.5% of records without region (S3). The variant should be independent of true/distractor; v3's own-country
+fallback turned the dropped token 'france' (Hauts-de-France) into a distractor signal. Fix: French region and
+department components are parsed into `state` like US/Indian states. Also: saint -> st (US generator writes
+'Pine Saint' for 'Pine Street'), ch. -> chemin, q. -> quai, and house numbers with a letter suffix ('5B') keep
+their number (the OCR fix turned them into 'sb').
+
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.
   -> run the France diagnostic (`notebooks/diagnostic_france.py`).
