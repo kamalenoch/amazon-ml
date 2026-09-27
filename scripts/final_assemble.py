@@ -74,6 +74,7 @@ def main():
     ap.add_argument("--ce", nargs="*", default=[])
     ap.add_argument("--supplement", default=None)
     ap.add_argument("--llm", default=None, help="LLM re-scorer out dir (llm_holdout_band / llm_test_band: rows it scored)")
+    ap.add_argument("--fr-variants", type=float, default=0.0, help="also write variants/fr_plus, variants/fr_minus with the France threshold +/- this delta (untested on the leaderboard: a gamble for spare submissions)")
     ap.add_argument("--stack", action="store_true", help="try a learned combiner (LightGBM, 2-fold CV on the holdout band); used only if it beats the weighted blend by >= 0.0003")
     ap.add_argument("--out", required=True)
     ap.add_argument("--force", default=None, help="testing: 'w,thr[,mix]' instead of the holdout choice")
@@ -254,8 +255,8 @@ def main():
         assert len(lt) == 0 or lt.row.max() < len(p), "LLM test rows do not index these scores"
         p[lt.row.values] = (1 - v_llm) * p[lt.row.values] + v_llm * lt.pc.values.astype(np.float32)
         log(f"LLM applied to {len(lt):,} test rows (share {v_llm})")
-    b = best_rows(tpj, p)
-    b = b[p[b] >= thr]
+    b_all = best_rows(tpj, p)
+    b = b_all[p[b_all] >= thr]
     S, P = ts1[b], tpj[b]
     log(f"test: {len(p):,} candidate pairs -> {len(S):,} matched")
     te = f"{a.data}/test"
@@ -289,6 +290,18 @@ def main():
                         "matched_entity_ids")
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), t1.entity_id.values, np.concatenate([ts1, add_s]),
                 pd.array(pool_ids, dtype="string"), np.concatenate([tpj, add_p]), "candidate_entity_ids")
+    if a.fr_variants > 0:                       # France threshold variants: same scores + same supplement, only France rows differ
+        is_fr = (t1.country.values == "France")
+        for tag, d in (("fr_plus", a.fr_variants), ("fr_minus", -a.fr_variants)):
+            tt = np.where(is_fr[ts1[b_all]], thr + d, thr)
+            bv = b_all[p[b_all] >= tt]
+            Sv, Pv = np.concatenate([ts1[bv], add_s]), np.concatenate([tpj[bv], add_p])
+            vd = os.path.join(a.out, "variants", tag)
+            os.makedirs(vd, exist_ok=True)
+            write_lists(os.path.join(vd, "matching_results.tsv"), t1.entity_id.values, Sv, pd.array(pool_ids, dtype="string"), Pv,
+                        "matched_entity_ids")
+            nfr = int(is_fr[Sv].sum()); nfr0 = int(is_fr[S].sum())
+            log(f"variant {tag}: France threshold {thr + d:.3f} -> France pairs {nfr:,} (main file {nfr0:,}); other countries identical")
     json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, llm_share=v_llm, stacker=stack_model is not None, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
     log(f"DONE: {len(S):,} matched pairs ({len(S) / len(t1):.2f} per S1), {n_has.mean():.3f} of S1 with a match; "
         f"by country {pd.Series(n_has).groupby(t1.country.values).mean().round(3).to_dict()}")
