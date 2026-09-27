@@ -8,8 +8,13 @@ Metric: macro F0.5 per Source-1 entity (precision-weighted, singletons count).
 | v1 | 0.9597 | **0.9405** | 95.8% | LightGBM, 46 features, one-to-one selection |
 | v2 | 0.9784 | **0.9640** | 96.6% | + noise-model features, pre-ranker pruning, extra keys, fast features |
 | v3.1 | dev 0.9810 | **0.9697** | 96.6% (v2 candidates) | + France: fallback for tokens unseen in train; 2x model rows; holdout-chosen selection |
+| v4.1b | 0.9831 | **0.976** | 98.2% | + format fingerprints, cosine blocking, k_keep 40, number-difference, extra keys, one-letter edits |
+| v4.1b + e5-small CE | 0.9841 | **0.979** | 98.2% | + multilingual cross-encoder re-scoring the GBDT's uncertain pairs |
+| **lb-0.982** | 0.9854 (+ supplement) | **0.982** | – | v5 (+ sound keys) + e5-base cross-encoder + recall supplement (e5 retrieval of unmatched pool records) |
 
-**Current best: v3.1 (public LB 0.969683)** — this commit. Outputs: Release `v3.1`, summary: [`results/v3.1`](results/v3.1/summary.json).
+**This branch (`lb-0.982`): public LB 0.982.** How it was produced, notebook by notebook: [`docs/lb_0982_runbook.md`](docs/lb_0982_runbook.md); numbers: [`results/lb0.982`](results/lb0.982/summary.json).
+
+Earlier best on main: v3.1 (public LB 0.969683). Outputs: Release `v3.1`, summary: [`results/v3.1`](results/v3.1/summary.json).
 
 Full log: [`docs/experiments.md`](docs/experiments.md) · Data insights: [`docs/eda_findings.md`](docs/eda_findings.md) ·
 Big files (predictions, model, scores): [`artifacts/README.md`](artifacts/README.md) → **Releases**.

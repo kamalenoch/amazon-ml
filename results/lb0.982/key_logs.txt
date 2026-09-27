@@ -1,0 +1,40 @@
+# key log lines of the runs behind public LB 0.982 (2026-09-27)
+
+## v4.1b R job (kaggle_R_resume_train_predict_v41b)                         public LB 0.976
+train cands 88,095,738  per S1 39.9  blocking recall 0.9821
+SELECTION: threshold best 0.9831 @ 0.725 | expected-F best 0.9829 @ (0.0, 1.5) -> using ('threshold', 0.725)
+HOLDOUT F0.5 0.9831 at threshold 0.725
+DONE: 1,732,544 S1 rows, 0.940 with >=1 match, 5,708,896 matched pairs (3.30 per S1)
+
+## CE_v41b (e5-small cross-encoder on v4.1b)                                   public LB 0.979
+holdout band pairs re-scored: 65,936 of 2,647,164
+holdout GBDT alone: F0.5 0.9831 @ 0.725 | blend w=0.5: 0.9839 @ 0.575 | w=0.7: 0.9841 @ 0.675
+chosen: GBDT weight 0.7, threshold 0.675, holdout F0.5 0.9841
+test band pairs to re-score: 1,866,651 of 69,229,022
+DONE: 5,695,667 matched pairs (3.29 per S1), 0.940 of S1 with a match
+
+## RS_v41b (recall supplement on the CE_v41b file)
+calibration: holdout S1 66,309; queries 2,691,515 (unowned + missed holdout copies)
+calibration proposals on holdout S1 (new pairs, best per pool record): 150,477, true 2,187; cosine floor 0.857 keeps 148,839 (true 2,165)
+thr 0.92: holdout F0.5 gain +0.00324 added 1,923 (precision 0.994) | thr 0.98: gain +0.00311 added 1,812 (precision 0.997)
+holdout base F0.5 0.9831; best gain +0.00324 @ 0.92; using threshold 0.98
+test: 1,732,544 S1, 9,969,589 pool, unmatched pool records 4,273,922
+test proposals (new pairs, best per pool record): 4,046,167; above cosine floor 4,001,537
+adding 54,681 pairs; by country {'India': 37214, 'France': 11475, 'US': 5992}          validator PASS
+
+## CE_v5_base (e5-base cross-encoder on v5)
+holdout band pairs re-scored: 63,640 of 2,647,384
+holdout GBDT alone: F0.5 0.9839 @ 0.725
+blend w=0.3 0.9836 | w=0.4 0.9839 | w=0.5 0.9848 | w=0.6 0.9854 @ 0.6 | w=0.7 0.9852
+chosen: GBDT weight 0.6, threshold 0.6, holdout F0.5 0.9854
+test band pairs to re-score: 1,851,144 of 69,236,346
+DONE: 5,714,323 matched pairs (3.30 per S1), 0.940 of S1 with a match                   validator PASS
+
+## final (kaggle_final: ber-v5-T, F5 x2, CE_v5_base, RS_v41b)                  public LB 0.982
+CHOSEN: holdout F0.5 0.9854 | GBDT weight 0.6 | CE mix None | threshold 0.6
+CE .../kaggle-ce-v5-base-ipynb/ce_out: test pairs identical to the scores
+test: 69,236,346 candidate pairs -> 5,714,323 matched
+supplement: 54,681 pairs >= 0.98 -> 43,106 added (dropped: 10,919 pool already matched, 11,432 already candidates)
+            by country {'India': 27932, 'France': 9743, 'US': 5431}
+DONE: 5,757,429 matched pairs (3.32 per S1), 0.941 of S1 with a match; by country {'France': 0.939, 'India': 0.941, 'US': 0.942}
+PASS - no blocking issues found. Safe to submit.

@@ -1,0 +1,69 @@
+{
+ "version": "lb-0.982 = our v5 GBDT + e5-base cross-encoder (blend in the uncertain band) + recall supplement (e5 retrieval + CE)",
+ "date": "2026-09-27",
+ "public_lb_f05": 0.982,
+ "lb_history": {
+  "v4.1b GBDT": 0.976,
+  "v4.1b GBDT + e5-small CE (w 0.7, thr 0.675)": 0.979,
+  "this": 0.982
+ },
+ "holdout_f05": {
+  "v4.1b GBDT": 0.9831,
+  "v4.1b + e5-small CE": 0.9841,
+  "v5 GBDT": 0.9839,
+  "v5 + e5-base CE (w 0.6, thr 0.6)": 0.9854,
+  "recall supplement gain (calibrated on the v4.1b holdout, thr 0.98)": 0.00324
+ },
+ "gbdt_flags": "--fmt --k-keep 40 --cos 60 --numdiff --extra-keys --edits --phon --m-frac 0.20",
+ "cross_encoder": {
+  "model": "intfloat/multilingual-e5-base (MIT, 278M)",
+  "train_pairs": "500k pos / 800k hard neg / 300k random, 1 epoch",
+  "band": [
+   0.01,
+   0.99
+  ],
+  "test_band_rows": 1851144,
+  "test_pairs": 69236346
+ },
+ "recall_supplement": {
+  "encoder": "intfloat/multilingual-e5-small",
+  "scorer": "e5-small CE of the v4.1b run",
+  "queries_unmatched_pool": 4273922,
+  "proposals_new_pairs": 4046167,
+  "holdout_precision_at_thr": 0.997,
+  "pairs_scored_above_thr": 54681,
+  "added_in_final": 43106,
+  "added_by_country": {
+   "India": 27932,
+   "France": 9743,
+   "US": 5431
+  },
+  "dropped": {
+   "pool_already_matched": 10919,
+   "already_candidates": 11432
+  }
+ },
+ "final": {
+  "matched_pairs": 5757429,
+  "matches_per_s1": 3.32,
+  "share_s1_with_match": {
+   "France": 0.939,
+   "India": 0.941,
+   "US": 0.942
+  },
+  "validator": "PASS"
+ },
+ "notebooks_in_order": [
+  "kaggle_T_train_v4",
+  "kaggle_S_test_cands_v4",
+  "kaggle_R_resume_train_predict_v41b",
+  "kaggle_CE_v41b",
+  "kaggle_RS_v41b",
+  "kaggle_T5_train",
+  "kaggle_S5_test_cands",
+  "kaggle_F5_India",
+  "kaggle_F5_US_France",
+  "kaggle_CE_v5_base",
+  "kaggle_final"
+ ]
+}
