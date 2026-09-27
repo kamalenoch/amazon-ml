@@ -1,0 +1,16 @@
+{
+  "version": "v5.1 = v5 model + label-free France token corrections; French rows rescored (stage predict --rescore-unseen-only)",
+  "date": "2026-09-27",
+  "public_lb_f05": 0.976042,
+  "delta_vs_v5": 0.000418,
+  "france_token_overrides": {"france": "-2.23 -> -9.87 (22,877 single-add pairs, 61.9% house-number shifted)",
+                             "participations": "0.00 -> -9.87 (19,647 pairs, 86.3% shifted)",
+                             "fils": "-1.53 -> 0 (1.1%)", "et": "-1.68 -> 0 (1.7%)", "frs": "-2.04 -> 0 (0.6%)",
+                             "st": "-2.88 -> 0 (1.1%)"},
+  "no_add_base_shift_rate": 0.012,
+  "rows_rescored": 8828028,
+  "test_matched_pairs": 5739956, "matches_per_s1": 3.31,
+  "share_s1_with_match": {"France": 0.943, "India": 0.938, "US": 0.942},
+  "runtime_s": 1263,
+  "note": "candidates identical to v5 (same test_cands); US / India scores unchanged"
+}

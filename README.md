@@ -9,9 +9,10 @@ Metric: macro F0.5 per Source-1 entity (precision-weighted, singletons count).
 | v2 | 0.9784 | **0.9640** | 96.6% | + noise-model features, pre-ranker pruning, extra keys, fast features |
 | v3.1 | dev 0.9810 | **0.9697** | 96.6% (v2 candidates) | + France: fallback for tokens unseen in train; 2x model rows; holdout-chosen selection |
 | v4 | dev 0.9835 | – | dev 98.5% | distractor-generator features (house-number shift, legal swap), pool-side top-3 |
-| v5 | dev 0.9840 (never-seen 52k S1: 0.9855) | ? | dev 98.8% | string-aware pre-ranker, France region/department parsing, 2.2x faster test scoring |
+| v5 | 0.9827 | **0.9756** | 98.0% | string-aware pre-ranker, France region/department parsing, 2.2x faster test scoring |
+| v5.1 | = v5 | **0.9760** | 98.0% | + label-free France token corrections (house-number-shift evidence), French rows rescored |
 
-**Current best: v3.1 (public LB 0.969683)** — this commit. Outputs: Release `v3.1`, summary: [`results/v3.1`](results/v3.1/summary.json).
+**Current best: v5.1 (public LB 0.976042)** — this commit. Outputs: Releases `v5` and `v5.1`, summaries: [`results/v5`](results/v5/summary.json), [`results/v5.1`](results/v5.1/summary.json).
 
 Full log: [`docs/experiments.md`](docs/experiments.md) · Data insights: [`docs/eda_findings.md`](docs/eda_findings.md) ·
 Big files (predictions, model, scores): [`artifacts/README.md`](artifacts/README.md) → **Releases**.

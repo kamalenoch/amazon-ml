@@ -1,0 +1,21 @@
+{
+  "version": "v5 (commit 'v5: string-aware pre-ranker...'), single Kaggle job (stage all)",
+  "date": "2026-09-27",
+  "public_lb_f05": 0.975624,
+  "delta_vs_v3.1": 0.005941,
+  "holdout_f05": 0.9827, "selection": "threshold 0.725 (expected-F best 0.9826)", "best_iter": 670,
+  "holdout_at_thr": {"precision": 0.9969, "recall": 0.9562, "singleton_acc": 0.9899},
+  "wide_recall_prerank_slice": 0.9804, "prerank_recall_at_35_heldout_slice": 0.9789,
+  "train_blocking_recall": 0.9801,
+  "train_cands": 80495568, "train_cands_per_s1": 36.5,
+  "test_cands": 64769434, "test_cands_per_s1": 37.4, "test_rows_scored": 44334038,
+  "test_matched_pairs": 5742316, "matches_per_s1": 3.31,
+  "share_s1_with_match": {"France": 0.944, "India": 0.938, "US": 0.942},
+  "model_rows": {"train": 20523379, "holdout": 2424340, "features": 93},
+  "holdout_loss_decomposition": {"f05": 0.98274, "gain_if_no_fp": 0.00246, "gain_if_no_model_fn": 0.00771,
+                                 "gain_if_no_blocking_miss": 0.0075,
+                                 "by_country_f05": {"India": 0.9775, "US": 0.9862},
+                                 "empty_address_true_pairs": 15039, "empty_address_predicted": 6925},
+  "runtime_s": 27643, "peak_rss_gb": 22.8,
+  "kaggle": "4 vCPU / 31 GB RAM CPU notebook, one job"
+}

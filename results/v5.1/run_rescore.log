@@ -1,0 +1,31 @@
+[      0s |   0.3GB] imported test_norm_pool.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      0s |   0.3GB] imported prerank.txt from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      0s |   0.3GB] imported test_cands.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      0s |   0.3GB] imported train_norm_pool.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      0s |   0.3GB] imported train_norm_s1.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      1s |   0.3GB] imported model.pkl from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      1s |   0.3GB] imported test_norm_s1.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      1s |   0.3GB] imported test_scores.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      1s |   0.3GB] imported train_cands.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      1s |   0.3GB] imported holdout_preds.parquet from /kaggle/input/datasets/kamalenoch/v5-output/work
+[      1s |   0.3GB] imported train_report.json from /kaggle/input/datasets/kamalenoch/v5-output/work
+[     11s |   4.4GB] test loaded 1732544 9969589 {'India': 809986, 'US': 663106, 'France': 259452}
+[     37s |   9.0GB] test cands 64,769,434  per S1 37.4
+[     37s |   9.1GB] using threshold 0.725
+[     75s |   6.8GB] wrote candidate_pairs.tsv
+[    497s |  14.2GB] frequent tokens (fallback gate): name 36,508 addr 61,684
+[    510s |  15.4GB] unseen country France: 1,427,078 pool records' best candidates -> label-free token corrections
+[    514s |  15.3GB]   [france] token 'et': 1,081 single-add pairs, shift rate 0.017 (no-add base 0.012): add log-odds -1.68 -> 0.00
+[    514s |  15.3GB]   [france] token 'fils': 6,115 single-add pairs, shift rate 0.011 (no-add base 0.012): add log-odds -1.53 -> 0.00
+[    514s |  15.3GB]   [france] token 'france': 22,877 single-add pairs, shift rate 0.619 (no-add base 0.012): add log-odds -2.23 -> -9.87
+[    514s |  15.3GB]   [france] token 'participations': 19,647 single-add pairs, shift rate 0.863 (no-add base 0.012): add log-odds 0.00 -> -9.87
+[    514s |  15.3GB]   [france] token 'st': 470 single-add pairs, shift rate 0.011 (no-add base 0.012): add log-odds -2.88 -> 0.00
+[    514s |  15.3GB]   [france] token 'frs': 695 single-add pairs, shift rate 0.006 (no-add base 0.012): add log-odds -2.04 -> 0.00
+[    523s |  16.5GB] rescoring only unseen-country rows: 8,828,028 (other rows keep their previous scores)
+[    523s |  16.5GB] scoring 8,828,028 of 64,769,434 candidate rows (pr_score > 0.0001)
+[    763s |  16.0GB]   predicted 3,000,000/8,828,028
+[   1006s |  15.6GB]   predicted 6,000,000/8,828,028
+[   1230s |  16.2GB]   predicted 8,828,028/8,828,028
+[   1255s |  15.7GB] selection method ('threshold', np.float64(0.7250000000000002))
+[   1263s |  15.9GB] DONE: 1,732,544 S1 rows, 0.941 with >=1 match, 5,739,956 matched pairs (3.31 per S1)
+[   1263s |  15.9GB] by country (share with match): {'France': 0.943, 'India': 0.938, 'US': 0.942}

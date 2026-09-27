@@ -1,0 +1,233 @@
+[    847s |   4.9GB] train loaded 2206821 10320219
+[block] keys pool=322,663,194 s1=71,292,611 (398s)
+[block] cap=1200 usable s1 keys=47,058,783 expansion=4,771,019,499 (600s)
+[   1601s |   9.9GB] pre-ranker slice: 26,987,695 wide pairs, wide recall 0.9804
+[   1950s |  12.8GB]   pre-ranker recall@20 0.9781 (held-out half of slice)
+[   1950s |  12.8GB]   pre-ranker recall@30 0.9788 (held-out half of slice)
+[   1950s |  12.8GB]   pre-ranker recall@35 0.9789 (held-out half of slice)
+[   1950s |  12.8GB]   pre-ranker recall@40 0.9790 (held-out half of slice)
+[   1950s |  12.8GB]   pre-ranker recall@60 0.9793 (held-out half of slice)
+[block] s1 rows 0-27,782: expanded 59,999,987 -> uniq 49,531,902 -> kept 970,344 (97s)
+[block] s1 rows 27,783-55,484: expanded 59,999,860 -> uniq 49,530,374 -> kept 967,791 (190s)
+[block] s1 rows 55,485-83,293: expanded 59,997,670 -> uniq 49,462,985 -> kept 971,088 (285s)
+[block] s1 rows 83,294-111,078: expanded 60,001,390 -> uniq 49,492,059 -> kept 970,556 (379s)
+[block] s1 rows 111,079-138,652: expanded 59,998,535 -> uniq 49,517,617 -> kept 963,351 (473s)
+[block] s1 rows 138,653-166,451: expanded 60,002,082 -> uniq 49,465,718 -> kept 970,990 (568s)
+[block] s1 rows 166,452-194,270: expanded 60,000,086 -> uniq 49,482,597 -> kept 971,950 (663s)
+[block] s1 rows 194,271-221,913: expanded 59,999,677 -> uniq 49,464,314 -> kept 965,786 (755s)
+[block] s1 rows 221,914-249,779: expanded 59,997,865 -> uniq 49,440,525 -> kept 973,571 (851s)
+[block] s1 rows 249,780-277,416: expanded 59,999,938 -> uniq 49,521,585 -> kept 965,263 (946s)
+[block] s1 rows 277,417-305,110: expanded 60,002,248 -> uniq 49,393,062 -> kept 967,086 (1040s)
+[block] s1 rows 305,111-332,697: expanded 60,000,514 -> uniq 49,402,968 -> kept 963,623 (1134s)
+[block] s1 rows 332,698-360,572: expanded 59,999,027 -> uniq 49,381,528 -> kept 973,765 (1227s)
+[block] s1 rows 360,573-388,340: expanded 60,000,742 -> uniq 49,461,850 -> kept 969,805 (1321s)
+[block] s1 rows 388,341-416,056: expanded 59,996,154 -> uniq 49,405,758 -> kept 968,373 (1416s)
+[block] s1 rows 416,057-443,811: expanded 60,004,018 -> uniq 49,431,036 -> kept 969,199 (1509s)
+[block] s1 rows 443,812-471,648: expanded 59,999,859 -> uniq 49,527,597 -> kept 972,341 (1601s)
+[block] s1 rows 471,649-499,259: expanded 59,999,041 -> uniq 49,439,188 -> kept 964,607 (1695s)
+[block] s1 rows 499,260-527,343: expanded 59,999,603 -> uniq 49,497,253 -> kept 981,141 (1789s)
+[block] s1 rows 527,344-555,138: expanded 59,999,762 -> uniq 49,497,463 -> kept 971,453 (1881s)
+[block] s1 rows 555,139-583,037: expanded 60,001,374 -> uniq 49,395,721 -> kept 974,638 (1975s)
+[block] s1 rows 583,038-610,793: expanded 59,993,974 -> uniq 49,480,868 -> kept 969,651 (2069s)
+[block] s1 rows 610,794-638,334: expanded 60,006,420 -> uniq 49,430,662 -> kept 962,271 (2165s)
+[block] s1 rows 638,335-666,071: expanded 59,999,305 -> uniq 49,449,109 -> kept 968,997 (2259s)
+[block] s1 rows 666,072-693,740: expanded 59,998,845 -> uniq 49,392,891 -> kept 966,080 (2354s)
+[block] s1 rows 693,741-721,596: expanded 60,000,965 -> uniq 49,339,201 -> kept 973,198 (2446s)
+[block] s1 rows 721,597-749,328: expanded 59,997,605 -> uniq 49,485,692 -> kept 968,889 (2540s)
+[block] s1 rows 749,329-776,934: expanded 60,001,436 -> uniq 49,405,841 -> kept 964,431 (2634s)
+[block] s1 rows 776,935-804,360: expanded 60,001,942 -> uniq 49,504,657 -> kept 958,263 (2725s)
+[block] s1 rows 804,361-832,162: expanded 59,999,405 -> uniq 49,401,066 -> kept 971,372 (2818s)
+[block] s1 rows 832,163-859,947: expanded 60,000,585 -> uniq 49,407,359 -> kept 970,633 (2912s)
+[block] s1 rows 859,948-887,868: expanded 59,999,091 -> uniq 49,550,373 -> kept 975,342 (3005s)
+[block] s1 rows 887,869-915,736: expanded 60,000,976 -> uniq 49,440,687 -> kept 973,742 (3098s)
+[block] s1 rows 915,737-943,395: expanded 59,997,974 -> uniq 49,366,742 -> kept 966,407 (3191s)
+[block] s1 rows 943,396-971,089: expanded 60,001,551 -> uniq 49,394,122 -> kept 966,985 (3285s)
+[block] s1 rows 971,090-998,893: expanded 60,000,333 -> uniq 49,503,625 -> kept 970,971 (3379s)
+[block] s1 rows 998,894-1,026,514: expanded 59,998,191 -> uniq 49,477,442 -> kept 965,018 (3474s)
+[block] s1 rows 1,026,515-1,054,429: expanded 60,000,734 -> uniq 49,465,279 -> kept 975,075 (3569s)
+[block] s1 rows 1,054,430-1,082,186: expanded 60,000,039 -> uniq 49,435,304 -> kept 969,112 (3661s)
+[block] s1 rows 1,082,187-1,109,840: expanded 59,998,952 -> uniq 49,483,026 -> kept 966,012 (3752s)
+[block] s1 rows 1,109,841-1,137,629: expanded 60,001,453 -> uniq 49,438,845 -> kept 970,642 (3847s)
+[block] s1 rows 1,137,630-1,165,426: expanded 59,999,251 -> uniq 49,511,685 -> kept 970,944 (3938s)
+[block] s1 rows 1,165,427-1,193,041: expanded 60,000,507 -> uniq 49,419,961 -> kept 964,796 (4032s)
+[block] s1 rows 1,193,042-1,220,924: expanded 59,998,577 -> uniq 49,411,111 -> kept 974,190 (4123s)
+[block] s1 rows 1,220,925-1,248,423: expanded 59,999,931 -> uniq 49,464,129 -> kept 960,588 (4216s)
+[block] s1 rows 1,248,424-1,276,513: expanded 59,999,015 -> uniq 49,448,046 -> kept 981,120 (4311s)
+[block] s1 rows 1,276,514-1,304,302: expanded 60,002,894 -> uniq 49,419,845 -> kept 970,772 (4405s)
+[block] s1 rows 1,304,303-1,331,968: expanded 60,000,336 -> uniq 49,429,673 -> kept 966,515 (4496s)
+[block] s1 rows 1,331,969-1,359,714: expanded 59,999,407 -> uniq 49,435,098 -> kept 969,631 (4590s)
+[block] s1 rows 1,359,715-1,387,499: expanded 59,999,512 -> uniq 49,438,231 -> kept 971,075 (4683s)
+[block] s1 rows 1,387,500-1,415,257: expanded 60,001,042 -> uniq 49,405,186 -> kept 969,453 (4777s)
+[block] s1 rows 1,415,258-1,442,906: expanded 59,999,904 -> uniq 49,460,628 -> kept 965,917 (4871s)
+[block] s1 rows 1,442,907-1,470,630: expanded 59,998,479 -> uniq 49,426,211 -> kept 968,723 (4962s)
+[block] s1 rows 1,470,631-1,498,415: expanded 60,000,703 -> uniq 49,499,189 -> kept 970,418 (5055s)
+[block] s1 rows 1,498,416-1,526,117: expanded 59,997,919 -> uniq 49,453,759 -> kept 967,964 (5155s)
+[block] s1 rows 1,526,118-1,554,059: expanded 59,998,583 -> uniq 49,490,880 -> kept 975,839 (5248s)
+[block] s1 rows 1,554,060-1,581,627: expanded 60,003,023 -> uniq 49,454,331 -> kept 963,048 (5341s)
+[block] s1 rows 1,581,628-1,609,376: expanded 59,998,408 -> uniq 49,397,018 -> kept 969,563 (5435s)
+[block] s1 rows 1,609,377-1,637,133: expanded 60,002,375 -> uniq 49,458,446 -> kept 969,874 (5530s)
+[block] s1 rows 1,637,134-1,664,837: expanded 59,998,832 -> uniq 49,442,848 -> kept 967,795 (5624s)
+[block] s1 rows 1,664,838-1,692,532: expanded 60,000,797 -> uniq 49,423,763 -> kept 967,795 (5719s)
+[block] s1 rows 1,692,533-1,720,372: expanded 60,000,672 -> uniq 49,506,332 -> kept 972,481 (5815s)
+[block] s1 rows 1,720,373-1,748,436: expanded 59,997,400 -> uniq 49,462,472 -> kept 980,091 (5908s)
+[block] s1 rows 1,748,437-1,776,129: expanded 60,003,039 -> uniq 49,463,912 -> kept 967,217 (6002s)
+[block] s1 rows 1,776,130-1,803,727: expanded 59,996,725 -> uniq 49,481,370 -> kept 964,005 (6097s)
+[block] s1 rows 1,803,728-1,831,380: expanded 60,001,052 -> uniq 49,482,254 -> kept 965,848 (6192s)
+[block] s1 rows 1,831,381-1,859,330: expanded 60,001,861 -> uniq 49,442,060 -> kept 976,244 (6286s)
+[block] s1 rows 1,859,331-1,887,028: expanded 59,998,624 -> uniq 49,454,321 -> kept 967,595 (6387s)
+[block] s1 rows 1,887,029-1,914,860: expanded 60,000,908 -> uniq 49,489,398 -> kept 972,256 (6482s)
+[block] s1 rows 1,914,861-1,942,787: expanded 60,000,997 -> uniq 49,427,706 -> kept 975,325 (6576s)
+[block] s1 rows 1,942,788-1,970,479: expanded 59,999,467 -> uniq 49,530,863 -> kept 967,300 (6667s)
+[block] s1 rows 1,970,480-1,998,429: expanded 60,000,211 -> uniq 49,435,211 -> kept 976,381 (6761s)
+[block] s1 rows 1,998,430-2,026,137: expanded 59,999,054 -> uniq 49,502,241 -> kept 967,724 (6854s)
+[block] s1 rows 2,026,138-2,053,862: expanded 60,001,097 -> uniq 49,407,132 -> kept 968,407 (6947s)
+[block] s1 rows 2,053,863-2,081,444: expanded 59,996,450 -> uniq 49,439,291 -> kept 963,299 (7040s)
+[block] s1 rows 2,081,445-2,109,347: expanded 60,003,379 -> uniq 49,552,142 -> kept 975,142 (7135s)
+[block] s1 rows 2,109,348-2,137,200: expanded 59,997,902 -> uniq 49,403,156 -> kept 972,885 (7230s)
+[block] s1 rows 2,137,201-2,164,939: expanded 60,002,317 -> uniq 49,481,091 -> kept 968,941 (7325s)
+[block] s1 rows 2,164,940-2,192,540: expanded 59,999,518 -> uniq 49,493,487 -> kept 964,238 (7420s)
+[block] s1 rows 2,192,541-2,206,820: expanded 31,020,123 -> uniq 25,601,756 -> kept 498,667 (7470s)
+[block] pool-side top-3: +3,405,690 pairs (77,089,878 -> 80,495,568)
+[   9838s |  13.9GB] train cands 80,495,568  per S1 36.5  blocking recall 0.9801
+[  10219s |  11.4GB] noise dicts from 15,000,000 D pairs: name add 64981 drop 60475 | addr add 128904 drop 145533
+[  10397s |  12.6GB] model rows: train 20,523,379 of 20,523,379 (easy sampled at 1.0) | holdout 2,424,340 of 3,622,696 (pr_score > 0.0001)
+[  10726s |  12.4GB] features on 22,947,719 model pairs
+[  11925s |  17.6GB] fit lgb: train 20,523,379  holdout 2,424,340  pos rate 0.098  feats 93
+[100]	valid_0's binary_logloss: 0.0107167
+[200]	valid_0's binary_logloss: 0.00981506
+[300]	valid_0's binary_logloss: 0.00959211
+[400]	valid_0's binary_logloss: 0.00948807
+[500]	valid_0's binary_logloss: 0.00943682
+[600]	valid_0's binary_logloss: 0.00941821
+[700]	valid_0's binary_logloss: 0.00940993
+[  14668s |  19.0GB]   thr 0.500  F0.5 0.9805  {'precision': 0.9914835762481482, 'recall': 0.9626450700994262, 'singleton_acc': 0.9745958429561201}
+[  14669s |  19.0GB]   thr 0.525  F0.5 0.9810  {'precision': 0.9923472445386876, 'recall': 0.9618932372287593, 'singleton_acc': 0.9776159175697282}
+[  14670s |  19.0GB]   thr 0.550  F0.5 0.9813  {'precision': 0.9930702498821309, 'recall': 0.961155466535031, 'singleton_acc': 0.9799253863918991}
+[  14671s |  19.0GB]   thr 0.575  F0.5 0.9816  {'precision': 0.9937316396248332, 'recall': 0.9603452199152072, 'singleton_acc': 0.9806359921833363}
+[  14672s |  19.0GB]   thr 0.600  F0.5 0.9819  {'precision': 0.9943987939954344, 'recall': 0.9596568511446796, 'singleton_acc': 0.9818795523183514}
+[  14674s |  19.0GB]   thr 0.625  F0.5 0.9822  {'precision': 0.9949976884782539, 'recall': 0.9589468319601248, 'singleton_acc': 0.9833007639012258}
+[  14675s |  19.0GB]   thr 0.650  F0.5 0.9825  {'precision': 0.995635328637899, 'recall': 0.9582169037157827, 'singleton_acc': 0.9859655356191153}
+[  14676s |  19.0GB]   thr 0.675  F0.5 0.9826  {'precision': 0.9961441148575604, 'recall': 0.9575099011838283, 'singleton_acc': 0.9873867472019897}
+[  14677s |  19.0GB]   thr 0.700  F0.5 0.9827  {'precision': 0.9965008188953186, 'recall': 0.9568166981427713, 'singleton_acc': 0.9886303073370047}
+[  14678s |  19.0GB]   thr 0.725  F0.5 0.9827  {'precision': 0.9969102291710675, 'recall': 0.9561527845952894, 'singleton_acc': 0.9898738674720199}
+[  14679s |  19.0GB]   thr 0.750  F0.5 0.9827  {'precision': 0.9971765179244364, 'recall': 0.9554632718694219, 'singleton_acc': 0.9902291703677385}
+[  14680s |  19.0GB]   thr 0.775  F0.5 0.9827  {'precision': 0.9974454947182658, 'recall': 0.9548158397525789, 'singleton_acc': 0.9907621247113164}
+[  14682s |  19.0GB]   thr 0.800  F0.5 0.9826  {'precision': 0.9977068770592005, 'recall': 0.9540786876421086, 'singleton_acc': 0.991650381950613}
+[  14683s |  19.0GB]   thr 0.825  F0.5 0.9825  {'precision': 0.9979643171948597, 'recall': 0.953196172702899, 'singleton_acc': 0.9923609877420501}
+[  14684s |  19.0GB]   thr 0.850  F0.5 0.9823  {'precision': 0.9981930497008663, 'recall': 0.9522254884650784, 'singleton_acc': 0.992893942085628}
+[  14685s |  19.0GB]   thr 0.875  F0.5 0.9820  {'precision': 0.9983985304850053, 'recall': 0.9510119552191941, 'singleton_acc': 0.9937821993249245}
+[  14686s |  19.0GB]   thr 0.900  F0.5 0.9816  {'precision': 0.9985813160013403, 'recall': 0.9494769959440041, 'singleton_acc': 0.9943151536685024}
+[  14687s |  19.0GB]   thr 0.925  F0.5 0.9809  {'precision': 0.9988132031658815, 'recall': 0.947182361348761, 'singleton_acc': 0.9952034109077988}
+[  14692s |  19.0GB]   expected-F  miss_prior 0.0  power 1.0  F0.5 0.9824
+[  14695s |  19.0GB]   expected-F  miss_prior 0.0  power 1.25  F0.5 0.9826
+[  14698s |  19.0GB]   expected-F  miss_prior 0.0  power 1.5  F0.5 0.9826
+[  14701s |  19.0GB]   expected-F  miss_prior 0.0  power 2.0  F0.5 0.9826
+[  14704s |  19.0GB]   expected-F  miss_prior 0.05  power 1.0  F0.5 0.9824
+[  14707s |  19.0GB]   expected-F  miss_prior 0.05  power 1.25  F0.5 0.9826
+[  14710s |  19.0GB]   expected-F  miss_prior 0.05  power 1.5  F0.5 0.9826
+[  14714s |  19.0GB]   expected-F  miss_prior 0.05  power 2.0  F0.5 0.9826
+[  14717s |  19.0GB]   expected-F  miss_prior 0.1  power 1.0  F0.5 0.9824
+[  14720s |  19.0GB]   expected-F  miss_prior 0.1  power 1.25  F0.5 0.9826
+[  14723s |  19.0GB]   expected-F  miss_prior 0.1  power 1.5  F0.5 0.9826
+[  14726s |  19.0GB]   expected-F  miss_prior 0.1  power 2.0  F0.5 0.9826
+[  14726s |  19.0GB] SELECTION: threshold best 0.9827 @ 0.725 | expected-F best 0.9826 @ (0.0, 1.5) -> using ('threshold', np.float64(0.7250000000000002))
+[  14726s |  19.0GB] HOLDOUT F0.5 0.9827 at threshold 0.725
+[  14726s |  19.0GB] top features {'prs_margin_pool': 39589597.0, 'pr_score': 6014772.0, 'nn_add_sum': 1690801.0, 'bst_margin_pool': 958771.0, 'bst_gap_pool': 875934.0, 'nn_add_min': 608286.0, 'nshift_small_frac': 268784.0, 'num_rel_first': 238130.0, 'legal_swapped': 187537.0, 'prs_rank_pool': 173372.0, 'nn_add_nbad': 146220.0, 'nn_add_max': 142519.0, 'an_add_min': 132271.0, 'an_add_sum': 114667.0, 'nn_n_drop': 86607.0, 'nshift_min_nz': 86227.0, 'nn_drop_min': 81400.0, 'nn_drop_sum': 78260.0, 'nn_n_add': 76840.0, 'n_miss_idf_r': 72830.0}
+[  15586s |  10.5GB] test loaded 1732544 9969589 {'India': 809986, 'US': 663106, 'France': 259452}
+[block] keys pool=328,311,369 s1=57,257,852 (390s)
+[block] cap=1200 usable s1 keys=36,856,330 expansion=4,248,728,360 (706s)
+[block] s1 rows 0-24,493: expanded 59,997,380 -> uniq 48,631,337 -> kept 856,392 (101s)
+[block] s1 rows 24,494-48,926: expanded 60,002,111 -> uniq 48,716,276 -> kept 854,233 (197s)
+[block] s1 rows 48,927-73,229: expanded 59,996,119 -> uniq 48,713,390 -> kept 849,842 (294s)
+[block] s1 rows 73,230-97,744: expanded 60,003,808 -> uniq 48,696,544 -> kept 856,988 (393s)
+[block] s1 rows 97,745-122,429: expanded 59,998,801 -> uniq 48,760,420 -> kept 863,063 (499s)
+[block] s1 rows 122,430-146,940: expanded 60,000,093 -> uniq 48,732,179 -> kept 856,931 (596s)
+[block] s1 rows 146,941-171,542: expanded 59,999,938 -> uniq 48,657,814 -> kept 860,036 (694s)
+[block] s1 rows 171,543-195,861: expanded 60,001,087 -> uniq 48,637,232 -> kept 850,234 (791s)
+[block] s1 rows 195,862-220,267: expanded 59,998,878 -> uniq 48,655,998 -> kept 853,301 (888s)
+[block] s1 rows 220,268-244,575: expanded 59,997,231 -> uniq 48,647,074 -> kept 850,051 (984s)
+[block] s1 rows 244,576-269,051: expanded 60,002,338 -> uniq 48,660,855 -> kept 855,887 (1091s)
+[block] s1 rows 269,052-293,622: expanded 60,001,459 -> uniq 48,686,499 -> kept 859,087 (1189s)
+[block] s1 rows 293,623-318,072: expanded 60,000,628 -> uniq 48,612,256 -> kept 854,949 (1286s)
+[block] s1 rows 318,073-342,529: expanded 59,999,294 -> uniq 48,720,142 -> kept 855,282 (1383s)
+[block] s1 rows 342,530-366,977: expanded 59,998,988 -> uniq 48,709,070 -> kept 854,624 (1481s)
+[block] s1 rows 366,978-391,447: expanded 59,999,583 -> uniq 48,673,424 -> kept 855,259 (1578s)
+[block] s1 rows 391,448-416,008: expanded 60,000,045 -> uniq 48,740,566 -> kept 858,631 (1674s)
+[block] s1 rows 416,009-440,647: expanded 59,997,543 -> uniq 48,740,015 -> kept 861,420 (1775s)
+[block] s1 rows 440,648-465,163: expanded 60,003,242 -> uniq 48,701,762 -> kept 857,176 (1872s)
+[block] s1 rows 465,164-489,598: expanded 59,999,899 -> uniq 48,770,172 -> kept 854,311 (1968s)
+[block] s1 rows 489,599-514,064: expanded 59,996,232 -> uniq 48,657,214 -> kept 855,350 (2066s)
+[block] s1 rows 514,065-538,684: expanded 60,005,001 -> uniq 48,714,648 -> kept 860,900 (2162s)
+[block] s1 rows 538,685-563,234: expanded 59,999,889 -> uniq 48,658,309 -> kept 858,353 (2259s)
+[block] s1 rows 563,235-587,586: expanded 59,999,795 -> uniq 48,734,481 -> kept 851,505 (2354s)
+[block] s1 rows 587,587-612,018: expanded 60,000,035 -> uniq 48,690,835 -> kept 854,293 (2451s)
+[block] s1 rows 612,019-636,623: expanded 59,999,148 -> uniq 48,646,519 -> kept 860,244 (2549s)
+[block] s1 rows 636,624-661,020: expanded 60,000,426 -> uniq 48,743,868 -> kept 852,877 (2644s)
+[block] s1 rows 661,021-685,388: expanded 59,998,498 -> uniq 48,702,742 -> kept 852,165 (2740s)
+[block] s1 rows 685,389-709,743: expanded 60,001,935 -> uniq 48,759,047 -> kept 851,418 (2835s)
+[block] s1 rows 709,744-734,306: expanded 59,999,870 -> uniq 48,672,524 -> kept 859,066 (2932s)
+[block] s1 rows 734,307-758,798: expanded 59,998,357 -> uniq 48,803,952 -> kept 856,199 (3030s)
+[block] s1 rows 758,799-783,146: expanded 59,999,208 -> uniq 48,674,309 -> kept 851,284 (3127s)
+[block] s1 rows 783,147-807,565: expanded 59,997,288 -> uniq 48,617,680 -> kept 853,955 (3226s)
+[block] s1 rows 807,566-832,114: expanded 60,004,310 -> uniq 48,699,677 -> kept 858,185 (3323s)
+[block] s1 rows 832,115-856,588: expanded 59,998,145 -> uniq 48,737,942 -> kept 855,568 (3418s)
+[block] s1 rows 856,589-880,997: expanded 60,001,874 -> uniq 48,724,366 -> kept 853,572 (3513s)
+[block] s1 rows 880,998-905,344: expanded 60,000,484 -> uniq 48,632,678 -> kept 851,025 (3609s)
+[block] s1 rows 905,345-929,702: expanded 59,999,900 -> uniq 48,647,758 -> kept 851,687 (3706s)
+[block] s1 rows 929,703-954,085: expanded 59,998,409 -> uniq 48,721,792 -> kept 852,581 (3802s)
+[block] s1 rows 954,086-978,588: expanded 60,000,342 -> uniq 48,698,967 -> kept 856,668 (3897s)
+[block] s1 rows 978,589-1,003,016: expanded 60,002,138 -> uniq 48,663,511 -> kept 853,861 (3993s)
+[block] s1 rows 1,003,017-1,027,464: expanded 59,998,946 -> uniq 48,798,551 -> kept 854,825 (4088s)
+[block] s1 rows 1,027,465-1,051,956: expanded 59,999,748 -> uniq 48,669,123 -> kept 856,023 (4185s)
+[block] s1 rows 1,051,957-1,076,427: expanded 60,001,402 -> uniq 48,780,824 -> kept 855,481 (4280s)
+[block] s1 rows 1,076,428-1,100,924: expanded 59,998,863 -> uniq 48,674,025 -> kept 856,660 (4377s)
+[block] s1 rows 1,100,925-1,125,345: expanded 60,000,541 -> uniq 48,736,285 -> kept 853,912 (4473s)
+[block] s1 rows 1,125,346-1,149,773: expanded 59,999,984 -> uniq 48,650,711 -> kept 854,029 (4568s)
+[block] s1 rows 1,149,774-1,174,133: expanded 60,000,165 -> uniq 48,715,757 -> kept 851,578 (4664s)
+[block] s1 rows 1,174,134-1,198,703: expanded 60,000,025 -> uniq 48,634,266 -> kept 858,995 (4760s)
+[block] s1 rows 1,198,704-1,223,230: expanded 59,999,218 -> uniq 48,640,473 -> kept 857,340 (4857s)
+[block] s1 rows 1,223,231-1,247,524: expanded 59,998,774 -> uniq 48,674,567 -> kept 849,512 (4952s)
+[block] s1 rows 1,247,525-1,271,876: expanded 60,001,738 -> uniq 48,735,920 -> kept 851,592 (5047s)
+[block] s1 rows 1,271,877-1,296,387: expanded 59,998,644 -> uniq 48,714,496 -> kept 857,101 (5143s)
+[block] s1 rows 1,296,388-1,320,881: expanded 60,001,465 -> uniq 48,674,541 -> kept 856,317 (5237s)
+[block] s1 rows 1,320,882-1,345,264: expanded 60,000,589 -> uniq 48,699,639 -> kept 852,542 (5333s)
+[block] s1 rows 1,345,265-1,369,716: expanded 59,999,965 -> uniq 48,626,739 -> kept 855,085 (5428s)
+[block] s1 rows 1,369,717-1,394,420: expanded 59,998,563 -> uniq 48,635,251 -> kept 863,445 (5526s)
+[block] s1 rows 1,394,421-1,418,965: expanded 59,999,183 -> uniq 48,706,790 -> kept 857,808 (5622s)
+[block] s1 rows 1,418,966-1,443,371: expanded 60,001,293 -> uniq 48,714,230 -> kept 853,283 (5718s)
+[block] s1 rows 1,443,372-1,467,764: expanded 59,998,432 -> uniq 48,764,759 -> kept 852,765 (5813s)
+[block] s1 rows 1,467,765-1,492,368: expanded 60,002,317 -> uniq 48,678,183 -> kept 860,453 (5912s)
+[block] s1 rows 1,492,369-1,516,896: expanded 59,996,122 -> uniq 48,722,361 -> kept 857,351 (6008s)
+[block] s1 rows 1,516,897-1,541,440: expanded 60,002,032 -> uniq 48,726,055 -> kept 858,278 (6105s)
+[block] s1 rows 1,541,441-1,565,819: expanded 60,000,872 -> uniq 48,692,019 -> kept 852,335 (6200s)
+[block] s1 rows 1,565,820-1,590,345: expanded 60,000,368 -> uniq 48,713,293 -> kept 857,399 (6295s)
+[block] s1 rows 1,590,346-1,614,798: expanded 60,000,094 -> uniq 48,740,920 -> kept 854,902 (6390s)
+[block] s1 rows 1,614,799-1,639,239: expanded 59,997,573 -> uniq 48,732,604 -> kept 854,529 (6487s)
+[block] s1 rows 1,639,240-1,663,701: expanded 59,998,591 -> uniq 48,716,204 -> kept 855,090 (6582s)
+[block] s1 rows 1,663,702-1,688,125: expanded 60,003,760 -> uniq 48,617,874 -> kept 853,786 (6678s)
+[block] s1 rows 1,688,126-1,712,685: expanded 60,000,267 -> uniq 48,694,565 -> kept 858,461 (6775s)
+[block] s1 rows 1,712,686-1,732,543: expanded 48,729,077 -> uniq 39,549,735 -> kept 694,023 (6853s)
+[block] pool-side top-3: +4,196,081 pairs (60,573,353 -> 64,769,434)
+[  23221s |  17.8GB] test cands 64,769,434  per S1 37.4
+[  23221s |  17.8GB] using threshold 0.725
+[  23279s |  17.8GB] wrote candidate_pairs.tsv
+[  23715s |  22.6GB] frequent tokens (fallback gate): name 36,508 addr 61,684
+[  23716s |  22.6GB] scoring 44,334,038 of 64,769,434 candidate rows (pr_score > 0.0001)
+[  23977s |  22.5GB]   predicted 3,000,000/44,334,038
+[  24240s |  22.5GB]   predicted 6,000,000/44,334,038
+[  24503s |  22.5GB]   predicted 9,000,000/44,334,038
+[  24764s |  22.6GB]   predicted 12,000,000/44,334,038
+[  25024s |  22.6GB]   predicted 15,000,000/44,334,038
+[  25287s |  22.6GB]   predicted 18,000,000/44,334,038
+[  25552s |  22.6GB]   predicted 21,000,000/44,334,038
+[  25814s |  22.7GB]   predicted 24,000,000/44,334,038
+[  26078s |  22.7GB]   predicted 27,000,000/44,334,038
+[  26342s |  22.7GB]   predicted 30,000,000/44,334,038
+[  26606s |  22.7GB]   predicted 33,000,000/44,334,038
+[  26869s |  22.7GB]   predicted 36,000,000/44,334,038
+[  27131s |  22.7GB]   predicted 39,000,000/44,334,038
+[  27393s |  22.8GB]   predicted 42,000,000/44,334,038
+[  27605s |  22.8GB]   predicted 44,334,038/44,334,038
+[  27631s |  22.6GB] selection method ('threshold', np.float64(0.7250000000000002))
+[  27643s |  22.6GB] DONE: 1,732,544 S1 rows, 0.941 with >=1 match, 5,742,316 matched pairs (3.31 per S1)
+[  27643s |  22.6GB] by country (share with match): {'France': 0.944, 'India': 0.938, 'US': 0.942}

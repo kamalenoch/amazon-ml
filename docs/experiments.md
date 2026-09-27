@@ -140,7 +140,9 @@ their number (the OCR fix turned them into 'sb').
   france 22%, ecole 41% vs groupe 0/3570, college 0/489, union 0.3%, developpement 0.3%, club 0.5% - yet the model
   rejected 94% of 'groupe' adds (stem fallback to 'group' = -7.9) and predicted 52% of 'france' adds (exact entry
   -2.2 learned from US records instead of the own-country class -9.9).
-- v5.1 = v5 model + `unseen_country_overrides` for France (13 tokens), rescoring French rows only.
+- v5.1 = v5 model + `unseen_country_overrides` for France, rescoring French rows only. On Kaggle (best pairs by
+  pre-ranker score) 6 tokens passed the rules: france (61.9% shifted) and participations (86.3%) -> marker;
+  fils, et, frs, st -> neutral. Public LB 0.975624 -> **0.976042** (+0.0004), 21 min run.
   Dev check on US ('partners', 56% shifted, label-learned -1.1): forcing it to a marker cost 0.0012 -> marker rule
   only for >= 80% shifted tokens.
 
