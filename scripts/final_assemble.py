@@ -210,6 +210,7 @@ def main():
                 f"vs weighted blend {f_ho:.4f}")
             if f_st > f_ho + 3e-4 or os.environ.get("STACK_FORCE"):          # STACK_FORCE: testing only
                 stack_model = lgb.train(prm, lgb.Dataset(Xh, yh), 300)
+                thr_w = thr                                                      # weighted-blend threshold (France-safe variant)
                 f_ho, thr = f_st, t_st
                 log(f"CHOSEN (learned combiner): holdout F0.5 {f_ho:.4f} | threshold {thr}")
             else:
@@ -251,6 +252,11 @@ def main():
             lt_ = pd.read_parquet(os.path.join(a.llm, "llm_test_band.parquet"))
             pl_t = pd.Series(lt_.pc.values, lt_.row.values).reindex(brow).values.astype(np.float32)
         Xt = np.column_stack([p_raw[brow]] + [c.pc.values.astype(np.float32) for c in ce_t] + ([pl_t] if pl_t is not None else []) + [tf_t]).astype(np.float32)
+        p_w = p_raw.copy()                                                      # weighted blend (France-safe variant)
+        if w < 1.0:
+            pcw = ce_t[0].pc.values.astype(np.float32) if mix is None else \
+                (mix * ce_t[0].pc.values + (1 - mix) * ce_t[1].pc.values).astype(np.float32)
+            p_w[brow] = w * p_raw[brow] + (1 - w) * pcw
         p[brow] = stack_model.predict(Xt).astype(np.float32)
         log(f"learned combiner applied to {len(brow):,} test band rows")
         ce_t_apply = False
@@ -314,6 +320,23 @@ def main():
                         "matched_entity_ids")
             nfr = int(is_fr[Sv].sum()); nfr0 = int(is_fr[S].sum())
             log(f"variant {tag}: France threshold {thr + d:.3f} -> France pairs {nfr:,} (main file {nfr0:,}); other countries identical")
+    if stack_model is not None:                 # France-safe variant: combiner for US/India, France rows from the weighted blend
+        is_fr = (t1.country.values == "France")
+        pv = p.copy()
+        frr = is_fr[ts1]
+        pv[frr] = p_w[frr]
+        bv = best_rows(tpj, pv)
+        bv = bv[pv[bv] >= np.where(is_fr[ts1[bv]], thr_w, thr)]
+        Sv, Pv = ts1[bv], tpj[bv]
+        mv = np.zeros(len(pool_ids), bool); mv[Pv] = True
+        ka = ~mv[add_p] if len(add_p) else np.zeros(0, bool)
+        Sv, Pv = np.concatenate([Sv, add_s[ka]]), np.concatenate([Pv, add_p[ka]])
+        vd = os.path.join(a.out, "variants", "stack_no_fr")
+        os.makedirs(vd, exist_ok=True)
+        write_lists(os.path.join(vd, "matching_results.tsv"), t1.entity_id.values, Sv, pd.array(pool_ids, dtype="string"), Pv,
+                    "matched_entity_ids")
+        log(f"variant stack_no_fr: US/India from the combiner (thr {thr}), France from the weighted blend (thr {thr_w}) -> "
+            f"{len(Sv):,} pairs, France {int(is_fr[Sv].sum()):,} (main file {int(is_fr[S].sum()):,})")
     json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, llm_share=v_llm, stacker=stack_model is not None, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
     log(f"DONE: {len(S):,} matched pairs ({len(S) / len(t1):.2f} per S1), {n_has.mean():.3f} of S1 with a match; "
         f"by country {pd.Series(n_has).groupby(t1.country.values).mean().round(3).to_dict()}")
