@@ -66,9 +66,12 @@ if STAGE in ("predict", "resume"):
 # Attach outputs of earlier jobs as Notebook Output inputs; their cached stages are reused (symlinked).
 # resume: T output (train_norm_*, train_cands, prerank.txt) + S output (test_norm_*, test_cands)
 # predict: T output (model.pkl, prerank.txt) + S output
+real = lambda f: os.path.isfile(f) and not os.path.islink(f)
+# the first listed dir wins every file: list the job that trained / predicted with the model first (its model.pkl)
 imp = sorted({os.path.dirname(p) for pat in ("model.pkl", "prerank.txt", "train_cands.parquet", "train_norm_s1.parquet",
                                              "test_cands.parquet", "test_norm_s1.parquet")
-              for p in glob.glob(f"/kaggle/input/**/{pat}", recursive=True)})
+              for p in glob.glob(f"/kaggle/input/**/{pat}", recursive=True)},
+             key=lambda d: (not real(f"{d}/test_scores.parquet"), not real(f"{d}/holdout_preds.parquet"), d))
 print(imp)
 EXTRA = " ".join(f'"{d}"' for d in imp)
 RUN_STAGE = "__RUN_STAGE__"
