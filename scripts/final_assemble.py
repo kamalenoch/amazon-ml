@@ -44,6 +44,7 @@ def main():
     ap.add_argument("--scores", nargs="+", required=True)
     ap.add_argument("--ce", nargs="*", default=[])
     ap.add_argument("--supplement", default=None)
+    ap.add_argument("--llm", default=None, help="LLM re-scorer out dir (llm_holdout_band / llm_test_band: rows it scored)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--force", default=None, help="testing: 'w,thr[,mix]' instead of the holdout choice")
     a = ap.parse_args()
@@ -106,7 +107,33 @@ def main():
         v = [float(x) for x in a.force.split(",")]
         w, thr, mix = v[0], v[1], (v[2] if len(v) > 2 else mix)
         log(f"FORCED: GBDT weight {w}, threshold {thr}, mix {mix}")
-    log(f"CHOSEN: holdout F0.5 {f_ho:.4f} | GBDT weight {w} | CE mix {mix} (first CE share) | threshold {thr}")
+    # ---- optional LLM on the rows it scored: p = (1 - v) * p_blend + v * p_llm; v and threshold on the holdout
+    v_llm = 0.0
+    if a.llm:
+        lh = pd.read_parquet(os.path.join(a.llm, "llm_holdout_band.parquet"))
+        lh = lh[np.isfinite(lh.pc.values)]
+        assert len(lh) == 0 or lh.row.max() < len(hpg), "LLM holdout rows do not index this holdout"
+        pb = hpg.copy()
+        if ce_h and w < 1.0:
+            row = ce_h[0].row.values
+            pcb = ce_h[0].pc.values.astype(np.float32) if mix is None else \
+                (mix * ce_h[0].pc.values + (1 - mix) * ce_h[1].pc.values).astype(np.float32)
+            pb[row] = w * hpg[row] + (1 - w) * pcb
+        f0, t0 = grid_eval(pb)
+        best_l = (f0, t0, 0.0)
+        lr_, lp_ = lh.row.values, lh.pc.values.astype(np.float32)
+        for v in (0.25, 0.5, 0.75, 1.0):
+            p2 = pb.copy()
+            p2[lr_] = (1 - v) * pb[lr_] + v * lp_
+            f, t = grid_eval(p2)
+            log(f"  LLM share {v}: holdout F0.5 {f:.4f} @ {t}")
+            if f > best_l[0] + (2e-4 if best_l[2] == 0.0 else 0.0):
+                best_l = (f, t, v)
+        if best_l[2] > 0:
+            f_ho, thr, v_llm = best_l
+        log(f"LLM ({len(lh):,} holdout rows): {'USED, share ' + str(v_llm) if v_llm else 'not used (no holdout gain >= 0.0002)'}"
+            f" | holdout F0.5 {best_l[0]:.4f} vs {f0:.4f} without")
+    log(f"CHOSEN: holdout F0.5 {f_ho:.4f} | GBDT weight {w} | CE mix {mix} (first CE share) | LLM share {v_llm} | threshold {thr}")
     del hp, hs, hj, hy, hpg
 
     # ---------------- test
@@ -133,6 +160,12 @@ def main():
         pc = ce_t[0].pc.values.astype(np.float32) if mix is None else \
             (mix * ce_t[0].pc.values + (1 - mix) * ce_t[1].pc.values).astype(np.float32)
         p[row] = w * p[row] + (1 - w) * pc
+    if v_llm > 0:
+        lt = pd.read_parquet(os.path.join(a.llm, "llm_test_band.parquet"))
+        lt = lt[np.isfinite(lt.pc.values)]
+        assert len(lt) == 0 or lt.row.max() < len(p), "LLM test rows do not index these scores"
+        p[lt.row.values] = (1 - v_llm) * p[lt.row.values] + v_llm * lt.pc.values.astype(np.float32)
+        log(f"LLM applied to {len(lt):,} test rows (share {v_llm})")
     b = best_rows(tpj, p)
     b = b[p[b] >= thr]
     S, P = ts1[b], tpj[b]
@@ -168,7 +201,7 @@ def main():
                         "matched_entity_ids")
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), t1.entity_id.values, np.concatenate([ts1, add_s]),
                 pd.array(pool_ids, dtype="string"), np.concatenate([tpj, add_p]), "candidate_entity_ids")
-    json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
+    json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, llm_share=v_llm, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
     log(f"DONE: {len(S):,} matched pairs ({len(S) / len(t1):.2f} per S1), {n_has.mean():.3f} of S1 with a match; "
         f"by country {pd.Series(n_has).groupby(t1.country.values).mean().round(3).to_dict()}")
 
