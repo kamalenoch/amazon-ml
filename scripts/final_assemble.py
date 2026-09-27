@@ -14,6 +14,7 @@ CE out dirs need ce_holdout_band.parquet and ce_test_band.parquet (rows index ho
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -31,6 +32,34 @@ def log(*a):
     print(f"[{time.time() - T0:6.0f}s]", *a, flush=True)
 
 
+_TOK = re.compile(r"[a-z0-9]+")
+_NUM = re.compile(r"\d+")
+_NL = re.compile(r"[^\x00-\x7F]")
+STACK_TEXT = ["pool_name_nonlatin", "s1_name_nonlatin", "pool_addr_empty", "house_number_rel", "name_jacc", "addr_jacc", "name_len_ratio"]
+
+
+def pair_text_feats(n1, a1, n2, a2):
+    """Cheap raw-text flags for the learned combiner (script, empty address, house number, token overlap)."""
+    out = np.empty((len(n1), len(STACK_TEXT)), np.float32)
+    for i, (x1, y1, x2, y2) in enumerate(zip(n1, a1, n2, a2)):
+        t1, t2 = set(_TOK.findall(x1.lower())), set(_TOK.findall(x2.lower()))
+        u1, u2 = set(_TOK.findall(y1.lower())), set(_TOK.findall(y2.lower()))
+        m1, m2 = _NUM.search(y1), _NUM.search(y2)
+        if m1 and m2:
+            d = abs(int(m1.group(0)[:9]) - int(m2.group(0)[:9]))
+            hn = 0.0 if d == 0 else (1.0 if d <= 20 else 2.0)
+        else:
+            hn = -1.0
+        out[i] = (bool(_NL.search(x2)), bool(_NL.search(x1)), not y2.strip(), hn,
+                  len(t1 & t2) / max(len(t1 | t2), 1), len(u1 & u2) / max(len(u1 | u2), 1), len(x2) / max(len(x1), 1))
+    return out
+
+
+def read_texts(paths):
+    df = pd.concat([pd.read_csv(p, usecols=["business_name", "business_address"], **KW) for p in paths], ignore_index=True)
+    return df.business_name.values, df.business_address.values
+
+
 def best_rows(pool, p):
     o = np.lexsort((-p, pool))
     ps = pool[o]
@@ -45,6 +74,7 @@ def main():
     ap.add_argument("--ce", nargs="*", default=[])
     ap.add_argument("--supplement", default=None)
     ap.add_argument("--llm", default=None, help="LLM re-scorer out dir (llm_holdout_band / llm_test_band: rows it scored)")
+    ap.add_argument("--stack", action="store_true", help="try a learned combiner (LightGBM, 2-fold CV on the holdout band); used only if it beats the weighted blend by >= 0.0003")
     ap.add_argument("--out", required=True)
     ap.add_argument("--force", default=None, help="testing: 'w,thr[,mix]' instead of the holdout choice")
     a = ap.parse_args()
@@ -134,6 +164,46 @@ def main():
         log(f"LLM ({len(lh):,} holdout rows): {'USED, share ' + str(v_llm) if v_llm else 'not used (no holdout gain >= 0.0002)'}"
             f" | holdout F0.5 {best_l[0]:.4f} vs {f0:.4f} without")
     log(f"CHOSEN: holdout F0.5 {f_ho:.4f} | GBDT weight {w} | CE mix {mix} (first CE share) | LLM share {v_llm} | threshold {thr}")
+    stack_model = None
+    if a.stack and ce_h:
+        try:
+            import lightgbm as lgb
+            brow = ce_h[0].row.values
+            lmap = None
+            if a.llm:
+                lh_ = pd.read_parquet(os.path.join(a.llm, "llm_holdout_band.parquet"))
+                lmap = pd.Series(lh_.pc.values, lh_.row.values)
+            def stack_X(p_g, pcs, pl, tf):
+                cols = [p_g] + pcs + ([pl] if pl is not None else [])
+                return np.column_stack(cols + [tf]).astype(np.float32)
+            s1n, s1a = read_texts([f"{a.data}/train/train_source1.tsv"])
+            pn, pa = read_texts([f"{a.data}/train/train_source{k}.tsv" for k in (2, 3)])
+            tf_h = pair_text_feats(s1n[hs[brow]], s1a[hs[brow]], pn[hj[brow]], pa[hj[brow]])
+            del s1n, s1a, pn, pa
+            pl_h = lmap.reindex(brow).values.astype(np.float32) if lmap is not None else None
+            Xh = stack_X(hpg[brow], [c.pc.values.astype(np.float32) for c in ce_h], pl_h, tf_h)
+            yh = hy[brow]
+            fold = (s1_hash(tr1[hs[brow]]) % 2).astype(int)
+            prm = dict(objective="binary", learning_rate=0.05, num_leaves=31, min_data_in_leaf=100, feature_fraction=0.9,
+                       bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1, num_threads=4, seed=7)
+            oof = np.empty(len(brow), np.float32)
+            for k in (0, 1):
+                mdl = lgb.train(prm, lgb.Dataset(Xh[fold != k], yh[fold != k]), 300)
+                oof[fold == k] = mdl.predict(Xh[fold == k])
+            ps = hpg.copy()
+            ps[brow] = oof
+            f_st, t_st = grid_eval(ps)
+            log(f"learned combiner (2-fold OOF on {len(brow):,} band rows, {Xh.shape[1]} features): holdout F0.5 {f_st:.4f} @ {t_st} "
+                f"vs weighted blend {f_ho:.4f}")
+            if f_st > f_ho + 3e-4 or os.environ.get("STACK_FORCE"):          # STACK_FORCE: testing only
+                stack_model = lgb.train(prm, lgb.Dataset(Xh, yh), 300)
+                f_ho, thr = f_st, t_st
+                log(f"CHOSEN (learned combiner): holdout F0.5 {f_ho:.4f} | threshold {thr}")
+            else:
+                log("learned combiner not used (gain < 0.0003)")
+        except Exception as e:                                   # never lose the final over the optional combiner
+            log(f"learned combiner failed ({type(e).__name__}: {e}) -> weighted blend")
+            stack_model = None
     del hp, hs, hj, hy, hpg
 
     # ---------------- test
@@ -155,12 +225,30 @@ def main():
                 f"{d}: its test pairs differ from these scores -> attach the CE run of THIS version"
             del x
             log(f"CE {d}: test pairs identical to the scores")
-    if ce_t and w < 1.0:
+    p_raw = p.copy() if stack_model is not None else None
+    if stack_model is not None:
+        te_ = f"{a.data}/test"
+        brow = ce_t[0].row.values
+        s1n, s1a = read_texts([f"{te_}/test_source1.tsv"])
+        pn, pa = read_texts([f"{te_}/test_source{k}.tsv" for k in (2, 3)])
+        tf_t = pair_text_feats(s1n[ts1[brow]], s1a[ts1[brow]], pn[tpj[brow]], pa[tpj[brow]])
+        del s1n, s1a, pn, pa
+        pl_t = None
+        if a.llm:
+            lt_ = pd.read_parquet(os.path.join(a.llm, "llm_test_band.parquet"))
+            pl_t = pd.Series(lt_.pc.values, lt_.row.values).reindex(brow).values.astype(np.float32)
+        Xt = np.column_stack([p_raw[brow]] + [c.pc.values.astype(np.float32) for c in ce_t] + ([pl_t] if pl_t is not None else []) + [tf_t]).astype(np.float32)
+        p[brow] = stack_model.predict(Xt).astype(np.float32)
+        log(f"learned combiner applied to {len(brow):,} test band rows")
+        ce_t_apply = False
+    else:
+        ce_t_apply = True
+    if ce_t and w < 1.0 and ce_t_apply:
         row = ce_t[0].row.values
         pc = ce_t[0].pc.values.astype(np.float32) if mix is None else \
             (mix * ce_t[0].pc.values + (1 - mix) * ce_t[1].pc.values).astype(np.float32)
         p[row] = w * p[row] + (1 - w) * pc
-    if v_llm > 0:
+    if v_llm > 0 and stack_model is None:
         lt = pd.read_parquet(os.path.join(a.llm, "llm_test_band.parquet"))
         lt = lt[np.isfinite(lt.pc.values)]
         assert len(lt) == 0 or lt.row.max() < len(p), "LLM test rows do not index these scores"
@@ -201,7 +289,7 @@ def main():
                         "matched_entity_ids")
     write_lists(os.path.join(a.out, "candidate_pairs.tsv"), t1.entity_id.values, np.concatenate([ts1, add_s]),
                 pd.array(pool_ids, dtype="string"), np.concatenate([tpj, add_p]), "candidate_entity_ids")
-    json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, llm_share=v_llm, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
+    json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, llm_share=v_llm, stacker=stack_model is not None, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
     log(f"DONE: {len(S):,} matched pairs ({len(S) / len(t1):.2f} per S1), {n_has.mean():.3f} of S1 with a match; "
         f"by country {pd.Series(n_has).groupby(t1.country.values).mean().round(3).to_dict()}")
 
