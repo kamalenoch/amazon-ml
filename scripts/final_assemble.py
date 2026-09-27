@@ -75,6 +75,7 @@ def main():
     ap.add_argument("--supplement", default=None)
     ap.add_argument("--llm", default=None, help="LLM re-scorer out dir (llm_holdout_band / llm_test_band: rows it scored)")
     ap.add_argument("--fr-variants", type=float, default=0.0, help="also write variants/fr_plus, variants/fr_minus with the France threshold +/- this delta (untested on the leaderboard: a gamble for spare submissions)")
+    ap.add_argument("--sup-variants", default="", help="comma list of lower supplement thresholds -> variants/sup_<t> on top of the weighted-blend selection (the 0.983 configuration)")
     ap.add_argument("--stack", action="store_true", help="try a learned combiner (LightGBM, 2-fold CV on the holdout band); used only if it beats the weighted blend by >= 0.0003")
     ap.add_argument("--out", required=True)
     ap.add_argument("--force", default=None, help="testing: 'w,thr[,mix]' instead of the holdout choice")
@@ -303,6 +304,7 @@ def main():
             log(f"supplement: {len(sp):,} pairs >= {t_use} -> {int(keep.sum()):,} added "
                 f"(dropped: {int(matched[pj].sum()):,} pool already matched, {int(is_cand.sum()):,} already candidates) | by country "
                 f"{pd.Series(t1.country.values[add_s]).value_counts().to_dict()}")
+    S0, P0 = S, P                                              # selection before the supplement (for the sup variants)
     S = np.concatenate([S, add_s]); P = np.concatenate([P, add_p])
     n_has = write_lists(os.path.join(a.out, "matching_results.tsv"), t1.entity_id.values, S, pd.array(pool_ids, dtype="string"), P,
                         "matched_entity_ids")
@@ -337,6 +339,32 @@ def main():
                     "matched_entity_ids")
         log(f"variant stack_no_fr: US/India from the combiner (thr {thr}), France from the weighted blend (thr {thr_w}) -> "
             f"{len(Sv):,} pairs, France {int(is_fr[Sv].sum()):,} (main file {int(is_fr[S].sum()):,})")
+    if a.sup_variants and a.supplement:        # lower supplement thresholds on top of the weighted-blend selection
+        if stack_model is not None:
+            bw = best_rows(tpj, p_w)
+            bw = bw[p_w[bw] >= thr_w]
+            Sb, Pb = ts1[bw], tpj[bw]
+        else:
+            Sb, Pb = S0, P0
+        spv = pd.read_parquet(os.path.join(a.supplement, "supplement_pairs.parquet"))
+        si = pd.Index(t1.entity_id.values).get_indexer(spv.s1_id.values)
+        pj = pd.Index(pool_ids).get_indexer(spv.pool_id.values)
+        ok = (si >= 0) & (pj >= 0)
+        si, pj, pcv = si[ok].astype(np.int64), pj[ok].astype(np.int64), spv.pc.values[ok]
+        mb = np.zeros(len(pool_ids), bool); mb[Pb] = True
+        key = np.sort((ts1.astype(np.int64) << 24) | tpj.astype(np.int64))
+        k = (si << 24) | pj
+        pos = np.clip(np.searchsorted(key, k), 0, len(key) - 1)
+        free = ~mb[pj] & (key[pos] != k)
+        for tv in [float(x) for x in a.sup_variants.split(",") if x.strip()]:
+            m = free & (pcv >= tv)
+            Sv, Pv = np.concatenate([Sb, si[m]]), np.concatenate([Pb, pj[m]])
+            vd = os.path.join(a.out, "variants", f"sup_{tv:g}")
+            os.makedirs(vd, exist_ok=True)
+            write_lists(os.path.join(vd, "matching_results.tsv"), t1.entity_id.values, Sv, pd.array(pool_ids, dtype="string"), Pv,
+                        "matched_entity_ids")
+            log(f"variant sup_{tv:g}: weighted-blend selection + {int(m.sum()):,} recovered pairs (pc >= {tv}) -> {len(Sv):,} pairs; "
+                f"by country {pd.Series(t1.country.values[si[m]]).value_counts().to_dict()}")
     json.dump(dict(holdout_f05=f_ho, thr=thr, gbdt_weight=w, ce_mix=mix, llm_share=v_llm, stacker=stack_model is not None, added=int(len(add_s))), open(os.path.join(a.out, "final_choice.json"), "w"))
     log(f"DONE: {len(S):,} matched pairs ({len(S) / len(t1):.2f} per S1), {n_has.mean():.3f} of S1 with a match; "
         f"by country {pd.Series(n_has).groupby(t1.country.values).mean().round(3).to_dict()}")
