@@ -113,7 +113,8 @@ def main():
     ap.add_argument("--train-work", required=True)
     ap.add_argument("--pred-work", required=True)
     ap.add_argument("--test-work", required=True)
-    ap.add_argument("--cands", required=True)
+    ap.add_argument("--cands", default=None, help="dir with the predict job's candidate_pairs.tsv; if missing, it is "
+                    "rebuilt from test_scores.parquet (the predict job writes both from the same candidate table)")
     ap.add_argument("--scores", nargs="*", default=None, help="dirs with test_scores.parquet (per-country predict jobs); "
                     "merged by max. Default: --pred-work")
     ap.add_argument("--out", required=True)
@@ -233,7 +234,13 @@ def main():
     sel = select(ts.s1_idx.values, ts.pool_idx.values, p, best[2])
     n = write_lists(os.path.join(a.out, "matching_results.tsv"), tids, sel.s1.values, pd.array(tpids, dtype="string"),
                     sel.pool.values, "matched_entity_ids")
-    shutil.copy(os.path.join(a.cands, "candidate_pairs.tsv"), os.path.join(a.out, "candidate_pairs.tsv"))
+    cp = os.path.join(a.cands or "", "candidate_pairs.tsv")
+    if a.cands and os.path.isfile(cp):
+        shutil.copy(cp, os.path.join(a.out, "candidate_pairs.tsv"))
+    else:
+        write_lists(os.path.join(a.out, "candidate_pairs.tsv"), tids, ts.s1_idx.values, pd.array(tpids, dtype="string"),
+                    ts.pool_idx.values, "candidate_entity_ids")
+        log("rebuilt candidate_pairs.tsv from the test scores")
     log(f"DONE: {len(sel):,} matched pairs ({len(sel) / len(tids):.2f} per S1), {n.mean():.3f} of S1 with a match")
 
 
