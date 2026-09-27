@@ -86,7 +86,7 @@ class CE:
         self.t_fit = time.time()
         k = 0
         for ep in range(epochs):
-            order = np.random.default_rng(ep).permutation(len(y))
+            order = np.random.default_rng(ep + 1000 * getattr(self, 'seed', 0)).permutation(len(y))
             for s in range(0, len(y), bs):
                 r = order[s:s + bs]
                 with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=self.dev == "cuda"):
@@ -146,6 +146,7 @@ def main():
     ap.add_argument("--n-rand", type=int, default=200_000)
     ap.add_argument("--epochs", type=int, default=1)
     ap.add_argument("--bs", type=int, default=128, help="training batch (e5-large on a T4: 32)")
+    ap.add_argument("--seed", type=int, default=0, help="sampling / training-order seed (a second run with another seed -> ensemble)")
     ap.add_argument("--train-minutes", type=float, default=None, help="stop training after this many minutes")
     ap.add_argument("--band", type=float, nargs=2, default=[0.01, 0.99])
     ap.add_argument("--force-w", type=float, default=None, help="use this GBDT weight instead of the holdout choice (testing)")
@@ -173,7 +174,7 @@ def main():
     hcut = pr_end + (1 - rep["holdout"]) * (m_end - pr_end)
     hold = (h >= hcut) & (h < m_end)
     usable = ~hold[c.s1_idx.values]
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(a.seed)
     pos = np.flatnonzero(usable & (y == 1)); neg = np.flatnonzero(usable & (y == 0))
     pos = rng.choice(pos, min(a.n_pos, len(pos)), replace=False)
     ord_ = neg[np.argsort(-c.pr_score.values[neg])]
@@ -191,6 +192,8 @@ def main():
     else:
         A = [T1[ids[i]] for i in c.s1_idx.values[rows]]; B = [T2[pids[j]] for j in c.pool_idx.values[rows]]
         ce = CE(resolve_model(a.model), dev)
+        ce.seed = a.seed
+        torch.manual_seed(a.seed)
         ce.fit(A, B, y[rows].astype(np.float32), bs=a.bs, epochs=a.epochs, minutes=a.train_minutes)
         del A, B
         ce.m.save_pretrained(os.path.join(a.out, "ce_model")); ce.tok.save_pretrained(os.path.join(a.out, "ce_model"))

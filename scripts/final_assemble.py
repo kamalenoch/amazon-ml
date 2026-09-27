@@ -102,6 +102,18 @@ def main():
             f"{d}: its holdout rows are not this holdout's band -> that CE ran on another GBDT (attach the CE run of THIS version)"
         ce_h.append(hb); ce_t.append(tb)
         log(f"CE {d}: holdout band {len(hb):,} rows, test band {len(tb):,} rows (holdout rows match this T)")
+    if len(ce_h) == 3:                  # two runs of the same model (e.g. e5-base, 2 seeds) + a third: average the pair first
+        same = [i for i, d in enumerate(a.ce) if "large" not in os.path.basename(os.path.dirname(os.path.abspath(d))).lower()
+                and "large" not in d.lower()]
+        pair = same[:2] if len(same) >= 2 else [0, 1]
+        other = [i for i in range(3) if i not in pair][0]
+        for L in (ce_h, ce_t):
+            assert (L[pair[0]].row.values == L[pair[1]].row.values).all()
+        avg_h = ce_h[pair[0]].assign(pc=(ce_h[pair[0]].pc.values + ce_h[pair[1]].pc.values) / 2)
+        avg_t = ce_t[pair[0]].assign(pc=(ce_t[pair[0]].pc.values + ce_t[pair[1]].pc.values) / 2)
+        log(f"3 cross-encoders: averaging {a.ce[pair[0]]} + {a.ce[pair[1]]}; mixing with {a.ce[other]}")
+        ce_h, ce_t = [avg_h, ce_h[other]], [avg_t, ce_t[other]]
+        a.ce = [a.ce[pair[0]], a.ce[other]]
     if len(ce_h) == 2:
         assert (ce_h[0].row.values == ce_h[1].row.values).all() and (ce_t[0].row.values == ce_t[1].row.values).all(), \
             "the two CE runs must re-score the same band rows (same GBDT scores)"
