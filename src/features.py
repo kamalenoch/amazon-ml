@@ -100,7 +100,9 @@ PY_COLS = (["n_wjacc", "n_jacc", "n_miss_idf", "n_miss_idf_r", "n_first_eq", "n_
 
 
 def _py_row(k1, a1, l1, u1, st1, rn1, ra1, ru1, ct1, k2, a2, l2, u2, st2, rn2, ra2, ru2, ct2):
-    idf_n, dn, idf_a, da, nadd, ndrop, aadd, adrop, fq_n, fq_a = _G["t"]
+    idf_n, dn, idf_a, da, nadd, ndrop, aadd, adrop, fq_n, fq_a = _G["t"][:10]
+    if len(_G["t"]) > 10:      # per-country name-add dictionaries (label-free corrections for unseen countries)
+        nadd = _G["t"][10].get(ct1, nadd)
     t1, t2 = k1.split(), k2.split()
     s1, s2 = set(t1), set(t2)
     wj, jac, miss = _wjacc(s1, s2, idf_n, dn)

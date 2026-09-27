@@ -126,6 +126,24 @@ department components are parsed into `state` like US/Indian states. Also: saint
 'Pine Saint' for 'Pine Street'), ch. -> chemin, q. -> quai, and house numbers with a letter suffix ('5B') keep
 their number (the OCR fix turned them into 'sb').
 
+## v5 result and v5.1 (France, label-free)
+- v5 public LB 0.975624 (v3.1 0.969683). Full-scale T log: wide recall 97.77% -> 98.04%, pre-ranker recall@35
+  96.54% -> 97.89%, train blocking recall 96.60% -> 98.01%; holdout 0.9827 (threshold 0.725, 670 trees). 7.7 h run.
+- Full-scale holdout (99k S1) loss 0.0173: FPs 0.0025, model FNs 0.0077, blocking misses 0.0075.
+  Empty-address pool records: 4.4% of true pairs but 54% of all missed pairs; 83% of those have a same-name S1 in
+  the same country (half of train S1 share a simplified name) -> mostly unresolvable. India blocking misses:
+  45% Indic-script names, 20% empty addresses, the rest random-word names with truncated addresses.
+- If US/India test ~ holdout, France scores ~0.935 (15% of test S1).
+- France: S2 records naming region / department / neither are now matched at the same rate (59.5% / 59.5% / 59.4%).
+- Label-free evidence for French name tokens: share of single-token-add best pairs whose house number is shifted
+  by 1-20 (train: every distractor marker >= 18%, every true-noise token <= 7%). France: participations 94%,
+  france 22%, ecole 41% vs groupe 0/3570, college 0/489, union 0.3%, developpement 0.3%, club 0.5% - yet the model
+  rejected 94% of 'groupe' adds (stem fallback to 'group' = -7.9) and predicted 52% of 'france' adds (exact entry
+  -2.2 learned from US records instead of the own-country class -9.9).
+- v5.1 = v5 model + `unseen_country_overrides` for France (13 tokens), rescoring French rows only.
+  Dev check on US ('partners', 56% shifted, label-learned -1.1): forcing it to a marker cost 0.0012 -> marker rule
+  only for >= 80% shifted tokens.
+
 ## Open questions
 - LB (0.9405) is 0.019 below holdout. Hypothesis: France (15% of test, unseen) scores ~0.83.
   -> run the France diagnostic (`notebooks/diagnostic_france.py`).

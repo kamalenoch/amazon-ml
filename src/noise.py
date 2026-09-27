@@ -166,6 +166,64 @@ def token_noise_feats(a, b, add_lo, drop_lo, country="", freq=None):
             min(drop, default=0.0), sum(drop), float(len(add_t)), float(len(drop_t)))
 
 
+def _first_int(u):
+    for t in u.split():
+        if t.isdigit() and len(t) <= 9:
+            return int(t)
+    return None
+
+
+def unseen_country_overrides(pairs, add_lo, freq, country, min_n=300, low=0.02, high=0.8, log=print):
+    """Label-free correction of name-token ADD log-odds for a country that has no training labels (France).
+
+    pairs: iterable of (s1_raw_name_tokens, pool_raw_name_tokens, s1_raw_numbers, pool_raw_numbers) for each pool
+    record's best S1 candidate. Evidence: the generator's distractors come with a house-number shift ("the
+    business next door"). In train, every distractor marker shows a 1-20 shift in >= 18% of its single-token-add
+    pairs (group 68%, india 26%, private 23%) and every true-noise token in <= 7% (center 2.6%, services 3.3%).
+      (a) token shifted in <= `low` of its pairs but scored as a marker (< -1.5) -> neutral 0
+          (e.g. French 'groupe' inherited 'group' = -7.9 through the phonetic stem);
+      (b) token shifted in >= `high` of its pairs but not scored as a marker -> own-country marker value
+          (e.g. French 'participations', unknown in train, 94% shifted). `high` must stay far above the
+          marker range: tokens that are both true noise and a marker exist ('partners' in US: 56% shifted,
+          label-learned -1.1; forcing it to -8 cost 0.0012 on dev);
+      (c) the country's own name ('france') added -> own-country marker value when shifted in >= 10%
+          (the exact entry was learned from US/Indian records where it is a foreign word).
+    Legal forms are left alone (legal swaps are handled by their own features). Returns {token: new_log_odds}."""
+    n, sh = Counter(), Counter()
+    base_n = base_sh = 0
+    for a, b, ua, ub in pairs:
+        add = set(b.split()) - set(a.split())
+        x, y = _first_int(ua), _first_int(ub)
+        if x is None or y is None:
+            continue
+        s = 1 <= abs(x - y) <= 20
+        if not add:
+            base_n += 1
+            base_sh += s
+        elif len(add) == 1:
+            t = next(iter(add))
+            n[t] += 1
+            sh[t] += s
+    marker = add_lo.get(COUNTRY_KEY, -8.0)
+    out = {}
+    for t, k in n.items():
+        if k < min_n or (t in LEGAL and LEGAL[t]) or len(t) < 2:
+            continue
+        r = sh[t] / k
+        v = lookup(add_lo, t, country, freq)
+        if t == country and r >= 0.10 and v > marker + 1:
+            out[t] = marker
+        elif r <= low and v < -1.5:
+            out[t] = 0.0
+        elif r >= high and v > -5.0:
+            out[t] = marker
+        else:
+            continue
+        log(f"  [{country}] token '{t}': {k:,} single-add pairs, shift rate {r:.3f} "
+            f"(no-add base {base_sh / max(base_n, 1):.3f}): add log-odds {v:.2f} -> {out[t]:.2f}")
+    return out
+
+
 def frequent_tokens(series_list, min_df=50):
     c = Counter()
     for s_ in series_list:

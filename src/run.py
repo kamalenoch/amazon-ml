@@ -28,7 +28,7 @@ from .prep import load_split, load_gt
 from .blocking import KeyIndex, generate_candidates
 from .prerank import prerank_features, make_pruner, StringSims, PR_COLS
 from .features import build_idf, cheap_features, string_features
-from .noise import LogOddsCounter, frequent_tokens
+from .noise import LogOddsCounter, frequent_tokens, unseen_country_overrides
 from .matching import train_lgb, feat_cols, select, f05_macro
 from .select import expected_f_select
 
@@ -102,6 +102,10 @@ def main():
     ap.add_argument("--easy-thr", type=float, default=1e-3,
                     help="model-training rows with pre-ranker score <= this are 'easy' negatives (subsampled)")
     ap.add_argument("--easy-keep", type=float, default=1.0, help="sampling rate of easy rows (weight 1/rate)")
+    ap.add_argument("--unseen-countries", default="France",
+                    help="test countries without training labels: name-token log-odds get label-free corrections")
+    ap.add_argument("--rescore-unseen-only", action="store_true",
+                    help="predict: reuse test_scores.parquet from --extra-work, rescore only unseen-country rows")
     ap.add_argument("--skip-thr", type=float, default=1e-4,
                     help="holdout/test rows with pre-ranker score <= this are not scored (p = 0)")
     ap.add_argument("--holdout", type=float, default=0.15)
@@ -322,11 +326,42 @@ def main():
     fq = (frequent_tokens([s1.rn, pool.rn]), frequent_tokens([s1.ra, pool.ra]))
     log(f"frequent tokens (fallback gate): name {len(fq[0]):,} addr {len(fq[1]):,}")
     tables = (*idf_n, *idf_a, *M["noise"], *fq)
+    unseen = [x for x in a.unseen_countries.split(",") if x]
+    s1_ct = np.asarray(s1.country.astype(str).str.strip())
+    per_country = {}
+    for ct in unseen:
+        rows_ct = np.flatnonzero(s1_ct[c.s1_idx.values] == ct)
+        if not len(rows_ct):
+            continue
+        cc = c.iloc[rows_ct]
+        best = cc.sort_values("pr_score", ascending=False, kind="stable").drop_duplicates("pool_idx")
+        bi, bj = best.s1_idx.values, best.pool_idx.values
+        pairs = zip(s1.rn.array.take(bi).to_numpy(), pool.rn.array.take(bj).to_numpy(),
+                    s1.ru.array.take(bi).to_numpy(), pool.ru.array.take(bj).to_numpy())
+        log(f"unseen country {ct}: {len(best):,} pool records' best candidates -> label-free token corrections")
+        ov = unseen_country_overrides(pairs, M["noise"][0], fq[0], ct.lower(), log=log)
+        if ov:
+            d = dict(M["noise"][0])
+            d.update(ov)
+            per_country[ct] = d
+        del cc, best, pairs
+    if per_country:
+        tables = tables + (per_country,)
     p = np.zeros(len(c), np.float32)
     ch = cheap.values
     cheap_cols = list(cheap.columns)
     del cheap
     live = np.flatnonzero(c.pr_score.values > a.skip_thr)      # the rest keep p = 0 (as in the holdout)
+    if a.rescore_unseen_only:
+        old_sc = pd.read_parquet(W("test_scores.parquet"))
+        assert len(old_sc) == len(c) and (old_sc.s1_idx.values == c.s1_idx.values).all() \
+            and (old_sc.pool_idx.values == c.pool_idx.values).all(), "test_scores.parquet does not match test_cands"
+        p[:] = old_sc.p.values
+        del old_sc
+        if os.path.islink(W("test_scores.parquet")):
+            os.remove(W("test_scores.parquet"))          # never write through the link into the input dataset
+        live = live[np.isin(s1_ct[c.s1_idx.values[live]], list(per_country))]
+        log(f"rescoring only unseen-country rows: {len(live):,} (other rows keep their previous scores)")
     log(f"scoring {len(live):,} of {len(c):,} candidate rows (pr_score > {a.skip_thr})")
     for k in range(0, len(live), a.predict_chunk):
         rows = live[k:k + a.predict_chunk]

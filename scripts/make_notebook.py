@@ -59,7 +59,7 @@ ROOT = os.path.dirname(DATA)                       # .../student_resource
 print(DATA)
 """)
 STAGE = os.environ.get("STAGE", "all")
-if STAGE in ("predict", "resume"):
+if STAGE in ("predict", "resume", "rescore"):
     code("""
 # Attach outputs of earlier jobs as Notebook Output inputs; their cached stages are reused (symlinked).
 # resume: T output (train_norm_*, train_cands, prerank.txt) + S output (test_norm_*, test_cands)
@@ -72,13 +72,13 @@ EXTRA = " ".join(f'"{d}"' for d in imp)
 RUN_STAGE = "__RUN_STAGE__"
 """)
     code("""
-!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {RUN_STAGE} --extra-work {EXTRA} 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
+!python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {RUN_STAGE} --extra-work {EXTRA} __EXTRA_FLAGS__ 2>&1 | grep -v "Warning\\]" | tee /kaggle/working/run.log
 """)
 else:
     code(f"""
 !python -m src.run --data "$DATA" --work /kaggle/working/work --out /kaggle/working/output --stage {STAGE} 2>&1 | grep -v "Warning\\\\]" | tee /kaggle/working/run.log
 """)
-if STAGE in ("all", "predict", "resume"):
+if STAGE in ("all", "predict", "resume", "rescore"):
     code("""
 !python "$ROOT/utils/validate_submission.py" --matching /kaggle/working/output/matching_results.tsv \\
     --candidate /kaggle/working/output/candidate_pairs.tsv --test-dir "$DATA/test"
@@ -91,8 +91,10 @@ code("""
 nb = {"cells": cells, "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
                                    "language_info": {"name": "python"}}, "nbformat": 4, "nbformat_minor": 4}
 name = {"all": "kaggle_pipeline", "train": "kaggle_T_train", "test-cands": "kaggle_S_test_cands",
-        "predict": "kaggle_F_predict", "resume": "kaggle_R_resume_train_predict"}[STAGE]
+        "predict": "kaggle_F_predict", "resume": "kaggle_R_resume_train_predict",
+        "rescore": "kaggle_P_rescore_unseen"}[STAGE]
 for c in cells:
-    c["source"] = [l.replace("__RUN_STAGE__", "all" if STAGE == "resume" else "predict") for l in c["source"]]
+    c["source"] = [l.replace("__RUN_STAGE__", "all" if STAGE == "resume" else "predict")
+                   .replace("__EXTRA_FLAGS__", "--rescore-unseen-only" if STAGE == "rescore" else "") for l in c["source"]]
 json.dump(nb, open(f"notebooks/{name}.ipynb", "w"), indent=1)
 print(f"wrote notebooks/{name}.ipynb", len(cells), "cells")
