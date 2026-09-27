@@ -65,8 +65,11 @@ def main():
     for d in a.ce:
         hb = pd.read_parquet(os.path.join(d, "ce_holdout_band.parquet"))
         tb = pd.read_parquet(os.path.join(d, "ce_test_band.parquet"))
+        band_here = np.flatnonzero((hp.p.values >= 0.01) & (hp.p.values <= 0.99))
+        assert len(band_here) == len(hb) and (band_here == np.sort(hb.row.values)).all(), \
+            f"{d}: its holdout rows are not this holdout's band -> that CE ran on another GBDT (attach the CE run of THIS version)"
         ce_h.append(hb); ce_t.append(tb)
-        log(f"CE {d}: holdout band {len(hb):,} rows, test band {len(tb):,} rows")
+        log(f"CE {d}: holdout band {len(hb):,} rows, test band {len(tb):,} rows (holdout rows match this T)")
     if len(ce_h) == 2:
         assert (ce_h[0].row.values == ce_h[1].row.values).all() and (ce_t[0].row.values == ce_t[1].row.values).all(), \
             "the two CE runs must re-score the same band rows (same GBDT scores)"
@@ -117,6 +120,14 @@ def main():
             ts["p"] = np.maximum(ts.p.values, x.p.values)
     ts1, tpj, p = ts.s1_idx.values, ts.pool_idx.values, ts.p.values.astype(np.float32)
     del ts
+    for d in a.ce:                                    # the CE must have re-scored THESE test pairs
+        fb = os.path.join(d, "test_scores_blend.parquet")
+        if os.path.exists(fb):
+            x = pd.read_parquet(fb, columns=["s1_idx", "pool_idx"])
+            assert len(x) == len(ts1) and (x.s1_idx.values == ts1).all() and (x.pool_idx.values == tpj).all(), \
+                f"{d}: its test pairs differ from these scores -> attach the CE run of THIS version"
+            del x
+            log(f"CE {d}: test pairs identical to the scores")
     if ce_t and w < 1.0:
         row = ce_t[0].row.values
         pc = ce_t[0].pc.values.astype(np.float32) if mix is None else \
