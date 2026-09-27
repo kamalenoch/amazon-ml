@@ -181,6 +181,7 @@ def main():
     H2 = texts([f"{tr_dir}/train_source2.tsv", f"{tr_dir}/train_source3.tsv"], pids[hp.pool_idx.values[band]])
     pc = ce.predict([H1[ids[i]] for i in hp.s1_idx.values[band]], [H2[pids[j]] for j in hp.pool_idx.values[band]])
     log(f"holdout band pairs re-scored: {len(band):,} of {len(hp):,}")
+    pd.DataFrame({"row": band, "pc": pc}).to_parquet(os.path.join(a.out, "ce_holdout_band.parquet"))   # for CE ensembles
     hs1 = np.flatnonzero(hold)
     kk = pd.Series(gtp.s1_id.value_counts()).reindex(ids[hs1]).fillna(0).values
 
