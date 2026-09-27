@@ -196,7 +196,7 @@ def main():
     pg = hp.p.values.astype(np.float32)
     best = max(((f05(pg, t), 1.0, t) for t in thrs))
     log(f"holdout GBDT alone: F0.5 {best[0]:.4f} @ {best[2]}")
-    for w in (0.3, 0.5, 0.7):
+    for w in (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7):     # 0 = cross-encoder alone inside the band
         pb = pg.copy(); pb[band] = w * pg[band] + (1 - w) * pc
         cand = max(((f05(pb, t), w, t) for t in thrs))
         log(f"holdout blend w={w}: F0.5 {cand[0]:.4f} @ {cand[2]}")
