@@ -75,7 +75,7 @@ class CE:
         e = self.tok(a, b, truncation=True, max_length=max_len, padding=True, return_tensors="pt")
         return {k: v.to(self.dev) for k, v in e.items()}
 
-    def fit(self, A, B, y, bs=128, lr=5e-5, epochs=1):
+    def fit(self, A, B, y, bs=128, lr=5e-5, epochs=1, minutes=None):
         from transformers import get_linear_schedule_with_warmup
         opt = torch.optim.AdamW([p for p in self.m.parameters() if p.requires_grad], lr=lr, weight_decay=0.01)
         steps = epochs * math.ceil(len(y) / bs)
@@ -83,6 +83,7 @@ class CE:
         scaler = torch.amp.GradScaler("cuda", enabled=self.dev == "cuda")
         lossf = torch.nn.BCEWithLogitsLoss()
         self.m.train()
+        self.t_fit = time.time()
         k = 0
         for ep in range(epochs):
             order = np.random.default_rng(ep).permutation(len(y))
@@ -95,15 +96,36 @@ class CE:
                 if k % 1000 == 0:
                     log(f"  step {k}/{steps} loss {loss.item():.4f}")
                 k += 1
+                if minutes is not None and time.time() - self.t_fit > minutes * 60:
+                    log(f"  training time budget reached at step {k}/{steps}")
+                    self.m.eval()
+                    return
         self.m.eval()
+
+    def replicas(self):
+        """The model on every visible GPU (inference only)."""
+        if not hasattr(self, "_reps"):
+            import copy
+            self._reps = [(self.m, self.dev)]
+            if self.dev == "cuda" and torch.cuda.device_count() > 1:
+                for g in range(1, torch.cuda.device_count()):
+                    self._reps.append((copy.deepcopy(self.m).to(f"cuda:{g}").eval(), f"cuda:{g}"))
+                log(f"  inference on {len(self._reps)} GPUs")
+        return self._reps
 
     @torch.no_grad()
     def predict(self, A, B, bs=512):
         out = np.empty(len(A), np.float32)
-        for s in range(0, len(A), bs):
-            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=self.dev == "cuda"):
-                z = self.m(**self.enc(A[s:s + bs], B[s:s + bs])).logits.squeeze(-1)
-            out[s:s + bs] = torch.sigmoid(z.float()).cpu().numpy()
+        reps = self.replicas()
+        starts = list(range(0, len(A), bs))
+        for i in range(0, len(starts), len(reps)):
+            res = []
+            for (m, d), s in zip(reps, starts[i:i + len(reps)]):
+                e = self.tok(A[s:s + bs], B[s:s + bs], truncation=True, max_length=80, padding=True, return_tensors="pt")
+                with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=d.startswith("cuda")):
+                    res.append((s, m(**{k: v.to(d) for k, v in e.items()}).logits.squeeze(-1)))
+            for s, z in res:
+                out[s:s + bs] = torch.sigmoid(z.float()).cpu().numpy()
         return out
 
 
@@ -123,6 +145,8 @@ def main():
     ap.add_argument("--n-hard", type=int, default=600_000)
     ap.add_argument("--n-rand", type=int, default=200_000)
     ap.add_argument("--epochs", type=int, default=1)
+    ap.add_argument("--bs", type=int, default=128, help="training batch (e5-large on a T4: 32)")
+    ap.add_argument("--train-minutes", type=float, default=None, help="stop training after this many minutes")
     ap.add_argument("--band", type=float, nargs=2, default=[0.01, 0.99])
     ap.add_argument("--force-w", type=float, default=None, help="use this GBDT weight instead of the holdout choice (testing)")
     ap.add_argument("--load", default=None, help="saved ce_model dir: skip training (rerun after a later-stage failure)")
@@ -167,7 +191,7 @@ def main():
     else:
         A = [T1[ids[i]] for i in c.s1_idx.values[rows]]; B = [T2[pids[j]] for j in c.pool_idx.values[rows]]
         ce = CE(resolve_model(a.model), dev)
-        ce.fit(A, B, y[rows].astype(np.float32), epochs=a.epochs)
+        ce.fit(A, B, y[rows].astype(np.float32), bs=a.bs, epochs=a.epochs, minutes=a.train_minutes)
         del A, B
         ce.m.save_pretrained(os.path.join(a.out, "ce_model")); ce.tok.save_pretrained(os.path.join(a.out, "ce_model"))
         log("saved ce_model")
