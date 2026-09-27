@@ -138,7 +138,8 @@ def best_per_pool(Q, S, P):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
-    ap.add_argument("--pred-work", required=True)
+    ap.add_argument("--pred-work", required=True, help="dir with holdout_preds.parquet, train_report.json, model.pkl")
+    ap.add_argument("--scores", default=None, help="dir with test_scores.parquet (default: --pred-work)")
     ap.add_argument("--submission", required=True)
     ap.add_argument("--ce-model", required=True)
     ap.add_argument("--out", required=True)
@@ -236,7 +237,7 @@ def main():
     s1_tx, pool_tx = texts(s1), texts(pool)
     s1_ct, pool_ct = s1.country.values, pool.country.values
     del s1, pool
-    sc = pd.read_parquet(os.path.join(a.pred_work, "test_scores.parquet"), columns=["s1_idx", "pool_idx"])
+    sc = pd.read_parquet(os.path.join(a.scores or a.pred_work, "test_scores.parquet"), columns=["s1_idx", "pool_idx"])
     cand_t = np.sort(keyof(sc.s1_idx.values, sc.pool_idx.values))
     del sc
     matched = np.zeros(len(pids), bool)
